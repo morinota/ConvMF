@@ -8,17 +8,27 @@ from gensim.corpora.dictionary import Dictionary
 
 
 def make_rating_data() -> List[RatingData]:
-    """ConvMFに入力するRatings情報(Rating Matrix)を作成する関数。
+    """評価値のcsvファイルから、ConvMFに入力するRatings情報(Rating Matrix)を作成する関数。
 
     Returns:
-        List[RatingData]: Rating Matrix(実際は、非ゼロ要素のみをListで)
+        List[RatingData]: Rating MatrixをCOO形式で。
     """
     ratings = pd.read_csv(Config.ratings_path).rename(
         columns={'movie': 'item'})
     ratings['user'] = ratings['user'].astype(np.int32)
     ratings['item'] = ratings['item'].astype(np.int32)
     ratings['rating'] = ratings['rating'].astype(np.float32)
-    # DataFrameからRatingDataに型変換して返す。
+    print(ratings.head())
+    print(ratings.tail())
+    print('='*10)
+    n_item = len(ratings['item'].unique())
+    n_user = len(ratings['user'].unique())
+    print(f'num of unique items is ...{n_item:,}')
+    print(f'num of unique users is ...{n_user:,}')
+    print(f'num of observed rating is ...{len(ratings):,}')
+    print(f'num of values of rating matrix is ...{n_user*n_item:,}')
+    print(f'So, density is {len(ratings)/(n_user*n_item) * 100 : .2f} %')
+    # DataFrameからRatingDataに型変換してReturn。
     return [RatingData(*t) for t in ratings.itertuples(index=False)]
 
 
@@ -26,7 +36,9 @@ def make_item_description(max_sentence_length=None) -> Tuple[np.ndarray, np.ndar
     """CovMFに入力するDocument情報(X_j)を作成する関数。
 
     Args:
-        max_sentence_length (_type_, optional): _description_. Defaults to None.
+        max_sentence_length (_type_, optional):
+        Document情報の最大長さ(Tokenの数)
+        Defaults to None.
 
     Returns:
         Tuple[np.ndarray, np.ndarray, int]: 
@@ -77,18 +89,38 @@ def make_item_description(max_sentence_length=None) -> Tuple[np.ndarray, np.ndar
 
 def train_convmf(batch_size: int, n_epoch: int,
                  n_sub_epoch: int, n_out_channel: int):
-    
+    """_summary_
+
+    Parameters
+    ----------
+    batch_size : int
+        _description_
+    n_epoch : int
+        _description_
+    n_sub_epoch : int
+        _description_
+    n_out_channel : int
+        _description_
+    """
+
     ratings = make_rating_data()
-    filter_windows = [3,4,5] # 窓関数の設定
-    max_sentence_length = 300 # 300 token(word)
-    movie_ids, item_descriptions, n_word = make_item_description(max_sentence_length)
-    n_factor = 300 
+    filter_windows = [3, 4, 5]  # 窓関数の設定
+    max_sentence_length = 300  # 300 token(word)
+    movie_ids, item_descriptions, n_word = make_item_description(
+        max_sentence_length)
+    n_factor = 300
     dropout_ratio = 0.5
     user_lambda = 10
     item_lambda = 100
 
 
-
-
 if __name__ == '__main__':
-    make_item_description()
+
+    ratings = make_rating_data()
+    print(len(ratings))
+
+    mf = MatrixFactrization(ratings=ratings)
+    print(type(mf.user_item_list))
+    print(len(mf.user_item_list))
+    print(len(mf.item_user_list[1]))
+    print(mf.item_user_list[1].ratings)

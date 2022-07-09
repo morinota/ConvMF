@@ -1,67 +1,91 @@
-from mimetypes import init
-from typing import NamedTuple, List, Optional
+import os
+
+from typing import Dict, Hashable, NamedTuple, List, Optional
 import pandas as pd
 import numpy as np
 
 
 class RatingData(NamedTuple):
+    """ユーザiのアイテムjに対する評価値 r_{ij}を格納するクラス"""
     user: int
     item: int
     rating: float
 
 
 class IndexRatingSet(NamedTuple):
-    indices: List[int]
-    ratings: List[float]
+    """あるユーザi (or アイテムj)における、任意のアイテムj(or ユーザi)の評価値のリスト"""
+    indices: List[int]  # user_id（もしくはitem_id）のList
+    ratings: List[float]  # 対応するratingsのList
 
 
 class MatrixFactrization(object):
+
     def __init__(self, ratings: List[RatingData], n_factor=300,
                  user_lambda=0.001, item_lambda=0.001, n_item: int = None):
+        """コンストラクタ
+
+        Parameters
+        ----------
+        ratings : List[RatingData]
+            ユーザiのアイテムjに対する評価値 r_{ij}を格納したList
+        n_factor : int, optional
+            latent factorの次元数, by default 300
+        user_lambda : float, optional
+            ConvMFのハイパーパラメータ \lambda_U, by default 0.001
+        item_lambda : float, optional
+            ConvMFのハイパーパラメータ \lambda_V, by default 0.001
+        n_item : int, optional
+            MFで使用するアイテム数, by default None
+        """
 
         data = pd.DataFrame(ratings)
-        self.n_user = max(data['user'].unique()) + 1
-        self.n_item = n_item if n_item is not None else max(
-            data['item'].unique()) + 1
+        # Rating matrixの形状(行数＝user数、列数=item数)を指定。
+        self.n_user = len(data['user'].unique())
+        self.n_item = n_item if n_item is not None else len(
+            data['item'].unique())
         self.n_factor = n_factor
         self.user_lambda = user_lambda
         self.item_lambda = item_lambda
-        # user factor の初期値
+        # user latent matrix をInitialize
         self.user_factor = np.random.normal(
             size=(self.n_factor, self.n_user)
         ).astype(np.float32)
-        # item factor の初期値
+        # item latent matrix をInitialize
         self.item_factor = np.random.normal(
             size=(self.n_factor, self.n_item)
         ).astype(np.float32)
-        # user factor 推定用(Rating Matrixにおける各userの非ゼロ要素)
+
+        # パラメータ更新時にアクセスしやすいように、Ratingsを整理しておく
+        self.user_item_list: Dict[int, IndexRatingSet]
+        self.item_user_list: Dict[int, IndexRatingSet]
+        # 各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratings
         self.user_item_list = {user_i: v for user_i, v in data.groupby('user').apply(
-            lambda x: IndexRatingSet(indices=x.item.values, ratings=x.rating.values)).items()}
-        # item factor 推定用(Rating Matrixにおける各itemの非ゼロ要素)
+            lambda x: IndexRatingSet(indices=x['item'].values, ratings=x['rating'].values)).items()}
+        # 各itemに対する、Rating Matrixにおける非ゼロ要素のusersとratings
         self.item_user_list = {item_i: v for item_i, v in data.groupby('item').apply(
-            lambda x: IndexRatingSet(indices=x.user.values, ratings=x.rating.values)).items()}
+            lambda x: IndexRatingSet(indices=x['user'].values, ratings=x['rating'].values)).items()}
 
     def fit(self, n_trial=5, additional: Optional[List[np.ndarray]] = None):
-        """ UとVを推定するメソッド。
-
+        """ U:user latent matrix とV:item latent matrixを推定するメソッド。
         Args:
-            n_trial (int, optional): _description_. Defaults to 5.
+            n_trial (int, optional): 
+            エポック数。何回ALSするか. Defaults to 5.
             additional (Optional[List[np.ndarray]], optional): 
             document factor vector =s_j = Conv(W, X_j)のリスト. Defaults to None.
         """
         # ALSをn_trial周していく！
-        # (実際には、AMAP? = Alternating Maximum a Posteriori)
+        # (今回はPMFだから実際には、AMAP? = Alternating Maximum a Posteriori)
         for n in range(n_trial):
+            # 交互にパラメータ更新
             self.update_user_factors()
             self.update_item_factors(additional)
-            pass
 
     def predict(self, users: List[int], items: List[int]) -> np.ndarray:
         """user factor vectorとitem factor vectorの内積をとって、r\hatを推定
 
         Args:
-            users (List[int]): _description_
-            items (List[int]): _description_
+            users (List[int]): 評価値を予測したいユーザidのlist
+            items (List[int]): 評価値を予測したいアイテムidのlist
         """
         ratings_hat = []
         for user_i, item_i in zip(users, items):
@@ -75,12 +99,14 @@ class MatrixFactrization(object):
         return np.array(ratings_hat)
 
     def update_user_factors(self):
-        # 各user_id毎に繰り返し処理
+        """ user latent vector (user latent matrixの列ベクトル)を更新する処理
+        """
+        # 各user_id毎(=>各user latent vector毎)に繰り返し処理
         for i in self.user_item_list.keys():
-            # rating matrix内のuser_id行の非ゼロ要素のindexとrating
+            # rating matrix内のuser_id行のitem indicesとratingsを取得
             indices = self.user_item_list[i].indices
             ratings = self.user_item_list[i].ratings
-            # item factor vector(ここでは定数)を取得
+            # item latent vector(ここでは定数)を取得
             v = self.item_factor[:, indices]
             # 以下、更新式の計算(aが左側の項, bが右側の項)
             a = np.dot(v, v.T)
@@ -94,20 +120,34 @@ class MatrixFactrization(object):
             # numpy.linalg.inv()じゃなくてnumpy.linalg.solve()の方が速いらしい...！
 
     def update_item_factors(self, additional: Optional[List[np.ndarray]] = None):
-        # 各item_id毎に繰り返し処理
+        """item latent vector (item latent matrixの列ベクトル)を更新する処理
+
+        Parameters
+        ----------
+        additional : Optional[List[np.ndarray]], optional
+            CNN(X_j, W)で出力された各アイテムの説明文書に対応するdocument latent vector
+            指定されない場合は、通常のPMF.
+            , by default None
+        """
+        # 各item_id毎(=>各item latent vector毎)に繰り返し処理
         for j in self.item_user_list.keys():
-            # rating matrix内のitem_id列の非ゼロ要素のindexとrating
+            # rating matrix内のitem_id列のuser indicesとratingsを取得
             indices = self.item_user_list[j].indices
             ratings = self.item_user_list[j].ratings
-            # user factor vector(ここでは定数)を取得
+            # user latent vector(ここでは定数)を取得
             u = self.user_factor[:, indices]
             # 以下、更新式の計算(aが左側の項, bが右側の項)
             a = np.dot(u, u.T)
+            # aの対角成分にlambda_Vを追加?
             a[np.diag_indices_from(a)] += self.item_lambda
             b = np.dot(u, ratings)
-            # \lambda_V・cnn(W, X_j)の項を追加
+            # ConvMFの場合は、\lambda_V・cnn(W, X_j)の項を追加
             if additional is not None:
                 b += self.item_lambda * additional[j]
 
             # v_{j}の値を更新 a^{-1} * b
             self.item_factor[:, j] = np.linalg.solve(a, b)
+
+
+if __name__ == '__main__':
+    pass
