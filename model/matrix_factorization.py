@@ -3,7 +3,7 @@ import os
 from typing import Dict, Hashable, NamedTuple, List, Optional
 import pandas as pd
 import numpy as np
-
+from tqdm import tqdm
 
 class RatingData(NamedTuple):
     """ユーザiのアイテムjに対する評価値 r_{ij}を格納するクラス"""
@@ -40,12 +40,13 @@ class MatrixFactrization(object):
 
         data = pd.DataFrame(ratings)
         # Rating matrixの形状(行数＝user数、列数=item数)を指定。
-        self.n_user = len(data['user'].unique())
-        self.n_item = n_item if n_item is not None else len(
-            data['item'].unique())
+        self.n_user = max(data['user'].unique())+1 # 行数=0始まりのuser_id+1
+        self.n_item = n_item if n_item is not None else max(
+            data['item'].unique())+1 # 列数=0始まりのitem_id+1
         self.n_factor = n_factor
         self.user_lambda = user_lambda
         self.item_lambda = item_lambda
+        
         # user latent matrix をInitialize
         self.user_factor = np.random.normal(
             size=(self.n_factor, self.n_user)
@@ -75,7 +76,7 @@ class MatrixFactrization(object):
         """
         # ALSをn_trial周していく！
         # (今回はPMFだから実際には、AMAP? = Alternating Maximum a Posteriori)
-        for n in range(n_trial):
+        for _ in tqdm(range(n_trial)):
             # 交互にパラメータ更新
             self.update_user_factors()
             self.update_item_factors(additional)

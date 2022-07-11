@@ -1,4 +1,5 @@
 
+from cgi import print_arguments
 import os
 import re
 import pandas as pd
@@ -66,21 +67,25 @@ def preprocess():
     descriptions = make_descriptions()
     ratings = make_ratings()
     
+    # 欠損値があるレコードを除去
+    ratings = ratings.dropna()
+    descriptions = descriptions.dropna()
 
     # re-indexing
-    users = ratings['user'].unique()
-    user_map = dict(zip(users, range(len(users)))) # ユーザ対応表の作成
-    movies = descriptions.id.unique()
-    movie_map = dict(zip(movies, range(len(movies)))) # アイテム対応表の作成
+    users = ratings['user'].unique() # user idのユニーク値のList
+    user_map = dict(zip(users, range(len(users)))) # user id =通し番号 対応表の作成
+    movies = descriptions['id'].unique() # item idのユニーク値のList
+    movie_map = dict(zip(movies, range(len(movies)))) # item id =通し番号対応表の作成
 
     # user id=>user通し番号、item id=>item通し番号に変換.　
-    ratings.user = ratings.user.apply(lambda x: user_map.get(x, None)) 
-    ratings.movie = ratings.movie.apply(lambda x: movie_map.get(x, None))
-    descriptions.id = descriptions.id.apply(lambda x: movie_map.get(x, None))
+    ratings['user'] = ratings['user'].apply(lambda x: user_map.get(x, None))
+    ratings['movie'] = ratings['movie'].apply(lambda x: movie_map.get(x, None))
+    descriptions['id'] = descriptions['id'].apply(lambda x: movie_map.get(x, None))
 
     # 欠損値があるレコードを除去
     ratings = ratings.dropna()
     descriptions = descriptions.dropna()
+
     # export
     ratings.to_csv(os.path.join(Config.data_dir, 'ratings.csv'), index=False)
     descriptions.to_csv(os.path.join(Config.data_dir, 'descriptions.csv'), index=False)

@@ -23,6 +23,9 @@ def make_rating_data() -> List[RatingData]:
     print('='*10)
     n_item = len(ratings['item'].unique())
     n_user = len(ratings['user'].unique())
+    print(max(ratings['user'].unique()))
+    print(min(ratings['user'].unique()))
+
     print(f'num of unique items is ...{n_item:,}')
     print(f'num of unique users is ...{n_user:,}')
     print(f'num of observed rating is ...{len(ratings):,}')
@@ -119,8 +122,11 @@ if __name__ == '__main__':
     ratings = make_rating_data()
     print(len(ratings))
 
-    mf = MatrixFactrization(ratings=ratings)
+    mf = MatrixFactrization(ratings=ratings, n_factor=10)
     print(type(mf.user_item_list))
     print(len(mf.user_item_list))
     print(len(mf.item_user_list[1]))
     print(mf.item_user_list[1].ratings)
+  
+    
+    mf.fit(n_trial=5, additional=None)
