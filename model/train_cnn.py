@@ -11,21 +11,20 @@ import time
 from torch.utils.data import (TensorDataset, DataLoader, RandomSampler,
                               SequentialSampler)
 
-# Specify loss function
-# loss_fn = nn.CrossEntropyLoss()
 
 class CustomLoss(nn.Module):
-    def __init__(self, lambda_v:float, lambda_w:float) -> None:
+    def __init__(self, lambda_v: float, lambda_w: float) -> None:
         super().__init__()
         # 初期化処理
-        # self.param = ... 
+        # self.param = ...
         self.lambda_v = lambda_v
         self.lambda_w = lambda_w
 
-    def forward(self, outputs:Tensor, targets:Tensor, parameters:Iterator[nn.Parameter]):
+    def forward(self, outputs: Tensor, targets: Tensor, parameters: Iterator[nn.Parameter]):
         '''
         outputs: 予測結果(ネットワークの出力)
-　　　　 targets: 正解
+        targets: 正解
+        parameters: CNNモデルのパラメータ
         '''
         # ロスの計算を何かしら書く
         # loss = torch.mean(outputs - targets)
@@ -38,6 +37,7 @@ class CustomLoss(nn.Module):
         # ロスの計算を返す
         return loss
 
+
 def set_seed(seed_value=42):
     """Set seed for reproducibility."""
     random.seed(seed_value)
@@ -46,15 +46,18 @@ def set_seed(seed_value=42):
     torch.cuda.manual_seed_all(seed_value)
 
 
+# Specify loss function
+# loss_fn = nn.CrossEntropyLoss()
+
+
 def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
           train_dataloader: DataLoader, val_dataloader: DataLoader = None,
           epochs: int = 10
           ):
     """Train the CNN model."""
-    
+
     # 損失関数の定義
     loss_fn = CustomLoss(lambda_v=0.01, lambda_w=0.1)
-
 
     # Tracking best validation accuracy
     best_accuracy = 0
@@ -90,8 +93,8 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
             # Perform a forward pass. This will return logits.
             logits = model(b_input_ids)
             # Compute loss and accumulate the loss values
-            loss = loss_fn(input=logits, target=b_labels)
-            model.parameters()
+            loss = loss_fn(input=logits, target=b_labels,
+                           parameters=model.parameters())
 
             # 1エポックのloss関数の値を保存するために追加
             total_loss += loss.item()

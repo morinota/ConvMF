@@ -13,7 +13,7 @@ KaggleのPersonalized Recommendationコンペに参加して以降、推薦シ�
 
 今実装中ですが、なかなかPytorchと仲良くなれず、苦戦しております...。(ちなみに元論文はKerasで実装しておりました!)
 
-パート2とした本記事では、**ConvMFの理論**と実装に向けた評価行列データ(MovieLens)と対応するアイテム説明文書データ(TMDb)の前処理についてまとめています。
+パート2とした本記事では、ConvMFにおけるMatrix Factorizationパートの実装についてまとめています。
 
 本記事以前のパートは、以下のリンクを御覧ください。
 
@@ -45,94 +45,13 @@ Convolutional Matrix Factorization(通称ConvMF)は、モデルベース協調�
 
 また問題設定として、N人のユーザとM個のアイテムがあり、観測された評価行列は$R\in \mathbb{R}^{N\times M}$行列で表現されるとします。
 そして、その積（$U^T \cdot V$）が評価行列 $R$を再構成するような、ユーザとアイテムの潜在モデル（$U\in \mathbb{R}^{k\times N}$ と $V \in \mathbb{R}^{k\times M}$）を見つけることが目的になります。
-
-確率的な観点からは、観測評価に関する条件付き分布(=**すなわち尤度関数！！**)は次式で与えられます。
-
-$$
-p(R|U, V, \sigma^2)
-= \prod_{i}^{N} \prod_{j}^{M}
- N(r_{ij}|u_i^T v_j, \sigma^2)^{I_{ij}}
- \tag{1}
-$$
-
-ここで、
-
-- $N (x|\mu, \sigma2)$は、一次元正規分布(ハイパラは$\mu, \sigma^2$)に従うxの確率密度関数。
-  - PMFでは「各$r_{ij}$間は独立」と仮定しているって事ですかね...!
-- $I_{ij}$は「Ratingが観測されていれば1, 未観測であれば0を返す」ような指標関数。
-  - 要するに、$I_{ij}$を使って、観測済みのRatingのみを尤度関数に含める事を表現しているっぽいですね...!
-
-また、user latent model$U$(各列ベクトルがユーザ因子ベクトル$u_i$)のPriori(事前分布)として、Spherical Gaussian prior(=>共分散行列が対角成分のみ。且つ全ての対角成分の値が等しい??)を選びます。
-(要するに、$U_i$間は独立、各$U_i$はk次元正規分布に従って生成されると仮定...!)
-
-$$
-u_i = \epsilon_i \\
-\epsilon_i \sim N(\mathbf{0}, \sigma^2_U I)\\
-
-p(U|\sigma^2_U) = \prod_{i}^{N} N(u_i|\mathbf{0}, \sigma_U^2 I)
-\tag{2}
-$$
-
-続いてitem latent modelですが、**従来のPMF(確率的行列分解)におけるアイテム特徴行列の確率モデルとは異なり**、ConvMFのアイテム因子行列は以下の３変数から生成されます：
-
-1. CNNにおけるパラメータ達$W$
-2. アイテムjのDescriptionを表す$X_j$
-3. 正規分布に従うと仮定された、撹乱項$\epsilon$
-
-数式で書くと...v_jの生成仮定は...
-
-$$
-v_j = cnn(W, X_j) + \epsilon_j \\
-\epsilon_j \sim N(\mathbf{0}, \sigma^2_V I)
-$$
-
-また、CNNのパラメータ$W$の各重み$w_k$に対しても、事前分布として、最も一般的に用いられるゼロ平均のSpherical Gaussian prior（=>つまり平均ベクトル0, 共分散行列が対角成分のみ、且つ全ての非ゼロ要素の値が等しい）を設定します。
-
-$$
-p(W|\sigma^2_W) = \prod_k N(w_k|0, \sigma_W^2) \tag{3}
-$$
-
-したがって、アイテム特徴行列に対する条件付き分布は次式で与えられます。
-
-$$
-p(V|W, X, \sigma^2_V) = \prod_j^{M}
-N(v_j|cnn(W,X_j),\sigma_V^2I) \tag{4}
-$$
-
-ここで、
-
-- $X$: アイテムに関する記述文書の集合
-  - $X_j$はアイテムjの特徴量
-- $cnn(W,X_j)$:
-  - CNNモデルから得られるDocument latent vactor($cnn(W,X_j)$)。
-  - $v_i$の事前分布の平均$\mu$として用いられている。
-  - このDocument Latent Vectorが**CNNとPMFの橋渡し**になる。
-  - これが説明文書(すなわち、アイテムが持つ特徴量、コンテキスト)と評価(Explicit or Implicit feedback)の両方を考慮するために重要な役割を果たすらしい...!
-
-## $cnn(W,X_j)$について
-
-ここに関しては追記するかもしれないし、しないかもしれません。
-NLPへのCNNパートの実装の際に記述するかもしれません！
-ここでは、アイテムjに関する説明文$X_j$を入力として、document latent vector $s_j = cnn(W,X_j) \in \mathbf{R}^{factorの数}$を出力する関数、とだけ記述しておきます。
+特にConvMFでは、アイテムjの説明文書ベクトル$X_j$を考慮して$V_j$をを推定する点が大きな特徴になります。
 
 ## ConvMFにおけるパラメータ推定法
 
 ConvMFでは、パラメータ($U, V, W$)を最適化する為に、MAP推定(maximum a posteriori estimation)を行います。
 
-$$
-\max_{U, V, W} p(U, V, W|R, X, \sigma^2, \sigma_U^2, \sigma_V^2, \sigma_W^2) \\
-= \max_{U, V, W}[尤度関数 \times 事前分布] \\
-= \max_{U, V, W}[
-  p(R|U, V, \sigma^2)
-  \cdot p(U|\sigma_U^2)
-  \cdot p(V|W, X, \sigma_V^2)
-  \cdot p(W|\sigma_W^2)
-  ]
-  \tag{5}
-$$
-
-式(5)の3行目に、上述した式(1)~(4)を代入する事で、目的関数の値を計算できますね。
-更にここから式(5)を対数化してマイナスを掛け、いい感じに変形($\sigma^2$で割る!)と、以下のようになります。
+事後分布の式を対数化してマイナスを掛け、いい感じに変形($\sigma^2$で割る!)と、以下のようになりますね([前パート参照](https://qiita.com/morinota/items/d84269b7b4bf55d157d8))。
 
 $$
 L(U,V,W|R, X, \lambda_U, \lambda_V, \lambda_W)
@@ -140,7 +59,6 @@ L(U,V,W|R, X, \lambda_U, \lambda_V, \lambda_W)
   + \frac{\lambda_U}{2} \sum_{i}^N||u_i||^2 \\
   + \frac{\lambda_V}{2} \sum_{j}^M ||v_j - cnn(W,X_j)||^2 \\
   + \frac{\lambda_W}{2} \sum_{k}^{|W_k|}||w_k||^2
-\tag{6}
 
 \\
 (
@@ -150,26 +68,21 @@ L(U,V,W|R, X, \lambda_U, \lambda_V, \lambda_W)
 )
 $$
 
-この式(6)を最小化するような$U, V, W$を求める事を目指します。
-ではどのように最適化していくのでしょうか?
-どうやら、UとVとWの内２つを固定して、一つずつ最適化していく、Alternating Least Square(ALS)的なアプローチを取っていくようです！
+この式を最小化するような$U, V, W$を求めるわけです。
 
-## UとVの推定方法
+ConvMFの学習では、UとVとWの内２つを固定して、一つずつ最適化していく、Alternating Least Square(ALS)的なアプローチを取っていきます。
 
-UとVの推定方法に関しては、ALSと同じような印象です！
-(今回は推定法がLeast SquareではなくMAPなので、AMAPとでもいうのでしょうか?)
-user latent model $U$に関して、具体的には、W と Vを一時的に一定とみなすと、式（6）は **Uに関して二次関数**となります。そして、Uの最適解は、最適化関数$L$を$u_i$に関して以下のように微分するだけで、**閉形式(closed-form, 要するに解析的に解ける式？)で解析的に計算**することができます。
+user latent matrix $U$とitem latent matrix $V$ の推定方法に関しては、ALS同様に、**閉形式(closed-form, 要するに解析的に解ける式？)で解析的に計算**することができます。
 
 $$
-u_i \leftarrow (VI_i V^T + \lambda_U I_K)^{-1}VR_i \tag{7}
+u_i \leftarrow (V I_i V^T + \lambda_U I_K)^{-1}VR_i \tag{7}
 $$
-
-item latent model $V$も同様に、以下のような更新式を導出する事ができます。
-($V$に関しては、$\lambda_V \cdot cnn(W, X_j)$が含まれているのが、通常のMFとの大きな違い！)
 
 $$
 v_j \leftarrow (U I_j U^T + \lambda_V I_K)^{-1}(UR_j + \lambda_V \cdot cnn(W, X_j)) \tag{8}
 $$
+
+$V$に関しては、$\lambda_V \cdot cnn(W, X_j)$が含まれているのが、通常のMFとの大きな違いであり、ConvMFの特徴ですね。
 
 ここで
 
@@ -182,127 +95,159 @@ $$
   - 式(8)はアイテム潜在ベクトル$v_j$を生成する際のCNNのDocument潜在ベクトル$s_j = cnn(W, X_j)$の効果を示している。
   - $\lambda_V$はバランシングパラメータ(要は重み付け平均みたいな?, 意味合いとしては正則化項のハイパラ?)になる。
 
-## Wの推定方法
-
-CNN内のパラメータWの推定方法に関しても、UとVを定数と仮定してWを推定する方針は同じです。
-
-しかし、Wはmax pooling層や非線形活性化関数などCNNアーキテクチャの特徴と密接に関係している為、UやVのように解析的に解く事はできません。
-
-それでも、上述したようにUとVが一時的に定数と仮定する事で、$L$は以下のように「$W$に関してL2正則化項を持つ二乗誤差関数」として解釈する事ができます。
+CNN内のパラメータWの推定方法に関しても、UとVを定数と仮定してWを推定する方針は同じです。以下の損失関数を最小化するようなパラメータ$W$を求めていきます。CNNに関しては次回のパートで実装をまとめていきます。
 
 $$
-式(6)よりUとVが定数と仮定して\dots \\
-
 \varepsilon(W) = \frac{\lambda_V}{2} \sum_{j}^M ||v_j - cnn(W,X_j)||^2 \\
-+ \frac{\lambda_W}{2} \sum_{k}^{|W_k|}||w_k||^2 + constant
-\tag{9}
++ \frac{\lambda_W}{2} \sum_{k}^{|W_k|}||w_k||^2 + constant \tag{9}
 $$
-
-よって上式を最小化すべき損失関数(目的関数)として勾配降下法やら逆誤差伝搬やらを用いて、問題なく$W$も最適化する事ができそうです。
-
-## Uの最適化→Vの最適化→Wの最適化→...を繰り返す...!
-
-パラメータ全体の最適化処理($U, V, W$は交互に更新される)は収束されるまで(エポック数分)繰り返されます。
 
 最終的には、最適化された$U, V, W$により、「アイテム$j$に対するユーザ$i$の未知の評価 $r_{ij}$」を推定する事ができます。
 
 $$
 r_{ij} \approx E[r_{ij}|u_i^T v_j, \sigma^2] \\
 = u_i^T v_j = u_i^T \cdot (cnn(W, X_j) + \epsilon_j)
+\tag{10}
 $$
 
-ここまでで、ConvMFの理論はざっくり完了ですね。
-やっぱり数式は世界共通なので、英語論文読んでいる最中に出てきてくれると救われた気分になります...！砂漠地帯の中のオアシス的な存在ですね：）
+ここまでで、簡単なConvMFの理論の復習は完了です。
 
-# MF部分の実装
+# Matrix Factorization部分の実装
 
-以下、MFクラス定義の全文になります。
+さて、以下でMatrix Factorizationクラスを実装していきます。
+Matrix Factorizationクラスに関しては、nishiba様の実装アプローチを参考にしまくりました。「なるほど、この情報をこのデータ型で格納しておくのか...!」と思う事が多々有りました...！
+(コメントアウトが多すぎたり、docstringの書き方が汚い点はご了承ください笑)
+
+## Ratings格納用のクラスを定義する。
 
 ```python:matrix_factrization.py
 
-from typing import NamedTuple, List, Optional
+import os
+from typing import Dict, Hashable, NamedTuple, List, Optional
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 
 class RatingData(NamedTuple):
-  
+    """ユーザiのアイテムjに対する評価値 r_{ij}を格納するクラス"""
     user: int
     item: int
     rating: float
 
 
 class IndexRatingSet(NamedTuple):
-    indices: List[int]
-    ratings: List[float]
+    """あるユーザi (or アイテムj)における、任意のアイテムj(or ユーザi)の評価値のリスト"""
+    indices: List[int]  # user_id（もしくはitem_id）のList
+    ratings: List[float]  # 対応するratingsのList
+```
 
+## `MatrixFactrization`クラスを定義する。
+
+いざ、`MatrixFactrization`クラスを定義していきます。まずはコンストラクタです。コンストラクタ`.__init__()`では、評価行列`ratings`とMatrix Factrizationのハイパーパラメータ`n_factor`, `user_lambda`, `item_lambda`を引数として受け取ります。
+
+`n_item`引数に関しては、評価値が一つも存在しないアイテムに対応可能にする為に設定しています。(評価値がないアイテムjに対しても、説明文書ベクトル$X_j$があれば、任意のユーザiに対して評価値の推定値$\hat{r}_{ij}$を推定できるはず...?)
+
+```python:matrix_factrization.py
+# 略
 
 class MatrixFactrization(object):
+
     def __init__(self, ratings: List[RatingData], n_factor=300,
                  user_lambda=0.001, item_lambda=0.001, n_item: int = None):
+        """コンストラクタ
+
+        Parameters
+        ----------
+        ratings : List[RatingData]
+            ユーザiのアイテムjに対する評価値 r_{ij}を格納したList
+        n_factor : int, optional
+            latent factorの次元数, by default 300
+        user_lambda : float, optional
+            ConvMFのハイパーパラメータ \lambda_U, by default 0.001
+        item_lambda : float, optional
+            ConvMFのハイパーパラメータ \lambda_V, by default 0.001
+        n_item : int, optional
+            MFで使用するアイテム数, by default None
+        """
 
         data = pd.DataFrame(ratings)
-        self.n_user = max(data['user'].unique()) + 1
+        # Rating matrixの形状(行数＝user数、列数=item数)を指定。
+        self.n_user = max(data['user'].unique())+1  # 行数=0始まりのuser_id+1
         self.n_item = n_item if n_item is not None else max(
-            data['item'].unique()) + 1
+            data['item'].unique())+1  # 列数=0始まりのitem_id+1
         self.n_factor = n_factor
         self.user_lambda = user_lambda
         self.item_lambda = item_lambda
-        # user factor の初期値
+
+        # user latent matrix をInitialize
         self.user_factor = np.random.normal(
             size=(self.n_factor, self.n_user)
         ).astype(np.float32)
-        # item factor の初期値
+        # item latent matrix をInitialize
         self.item_factor = np.random.normal(
             size=(self.n_factor, self.n_item)
         ).astype(np.float32)
-        # user factor 推定用(Rating Matrixにおける各userの非ゼロ要素)
+
+        # パラメータ更新時にアクセスしやすいように、Ratingsを整理しておく
+        self.user_item_list: Dict[int, IndexRatingSet]
+        self.item_user_list: Dict[int, IndexRatingSet]
+        # 各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratings
         self.user_item_list = {user_i: v for user_i, v in data.groupby('user').apply(
-            lambda x: IndexRatingSet(indices=x.item.values, ratings=x.rating.values)).items()}
-        # item factor 推定用(Rating Matrixにおける各itemの非ゼロ要素)
+            lambda x: IndexRatingSet(indices=x['item'].values, ratings=x['rating'].values)).items()}
+        # 各itemに対する、Rating Matrixにおける非ゼロ要素のusersとratings
         self.item_user_list = {item_i: v for item_i, v in data.groupby('item').apply(
-            lambda x: IndexRatingSet(indices=x.user.values, ratings=x.rating.values)).items()}
+            lambda x: IndexRatingSet(indices=x['user'].values, ratings=x['rating'].values)).items()}
+```
+
+コンストラクタの中盤では、user latent matrix $U$ (`self.user_factor`)とitem latent matrix $V$ (`self.item_factor`)の初期値を設定しています。
+
+コンストラクタの終盤では、「各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratings」と「各itemに対する、Rating Matrixにおける非ゼロ要素のusersとratings」を`Dict[int, IndexRatingSet]`で整理しています。
+これはMatrix Factrizationの学習プロセスにおいて、$U$と$V$のパラメータ更新式(上式の(7)(8))の$V I_i V^T$や$U I_j U^T$にアクセスしやすくする為です。
+
+## Matrix Factrization の学習プロセスを実装する。
+
+`MatrixFactrization`クラスの`.fit()`メソッドに、学習プロセスを実装しています。
+
+`.fit()`メソッドでは、前述したようにALS(Alternating Least Square)と同様のプロセスで user latent matrix と item latent matrix を交互に最適化していきます。
+
+user latent matrixの更新プロセスは`.update_user_factors()`メソッドに、item latent matrixの更新プロセスは`.update_item_factors()`メソッドに実装しており、innor関数的に`.fit()`メソッド内で呼び出しています。
+
+なお、`.update_item_factors()`メソッドでは`additional`引数をオプションで受け取り可能にしており、ConvMFにおいては、この引数に「各アイテムに対応するdocument latent vecotor $s_j=CNN(W, X_j)$」を渡して$V_j$の推定に説明文書の情報を活用する事になります。
+
+以下、実装内容になります。
+
+```python:matrix_factrization.py
+# 略
+
+class MatrixFactrization(object):
+    # 略
 
     def fit(self, n_trial=5, additional: Optional[List[np.ndarray]] = None):
-        """ UとVを推定するメソッド。
-
+        """ U:user latent matrix とV:item latent matrixを推定するメソッド。
         Args:
-            n_trial (int, optional): _description_. Defaults to 5.
-            additional (Optional[List[np.ndarray]], optional):
-            document factor vector =s_j = Conv(W, X_j)のリスト. Defaults to None.
+            n_trial (int, optional): 
+            エポック数。何回ALSするか. Defaults to 5.
+            additional (Optional[List[np.ndarray]], optional): 
+            文書潜在ベクトル document latent vector =s_j = Conv(W, X_j)のリスト. V_jの推定に使われる。
+            Defaults to None.
         """
         # ALSをn_trial周していく！
-        # (実際には、AMAP? = Alternating Maximum a Posteriori)
-        for n in range(n_trial):
+        # (今回はPMFだから実際には、AMAP? = Alternating Maximum a Posteriori)
+        for _ in tqdm(range(n_trial)):
+            # 交互にパラメータ更新
             self.update_user_factors()
             self.update_item_factors(additional)
-            pass
-
-    def predict(self, users: List[int], items: List[int]) -> np.ndarray:
-        """user factor vectorとitem factor vectorの内積をとって、r\hatを推定
-
-        Args:
-            users (List[int]): _description_
-            items (List[int]): _description_
-        """
-        ratings_hat = []
-        for user_i, item_i in zip(users, items):
-            # ベクトルの内積を計算
-            r_hat = np.inner(
-                self.user_factor[:, user_i],
-                self.item_factor[:, item_i]
-            )
-            ratings_hat.append(r_hat)
-        # ndarrayで返す。
-        return np.array(ratings_hat)
 
     def update_user_factors(self):
-        # 各user_id毎に繰り返し処理
+        """ user latent vector (user latent matrixの列ベクトル)を更新する処理
+        """
+        # 各user_id毎(=>各user latent vector毎)に繰り返し処理
         for i in self.user_item_list.keys():
-            # rating matrix内のuser_id行の非ゼロ要素のindexとrating
+            # rating matrix内のuser_id行のitem indicesとratingsを取得
             indices = self.user_item_list[i].indices
             ratings = self.user_item_list[i].ratings
-            # item factor vector(ここでは定数)を取得
+            # item latent vector(ここでは定数)を取得
             v = self.item_factor[:, indices]
             # 以下、更新式の計算(aが左側の項, bが右側の項)
             a = np.dot(v, v.T)
@@ -316,31 +261,125 @@ class MatrixFactrization(object):
             # numpy.linalg.inv()じゃなくてnumpy.linalg.solve()の方が速いらしい...！
 
     def update_item_factors(self, additional: Optional[List[np.ndarray]] = None):
-        # 各item_id毎に繰り返し処理
+        """item latent vector (item latent matrixの列ベクトル)を更新する処理
+
+        Parameters
+        ----------
+        additional : Optional[List[np.ndarray]], optional
+            CNN(X_j, W)で出力された各アイテムの説明文書に対応するdocument latent vector
+            指定されない場合は、通常のPMF.
+            , by default None
+        """
+        # 各item_id毎(=>各item latent vector毎)に繰り返し処理
         for j in self.item_user_list.keys():
-            # rating matrix内のitem_id列の非ゼロ要素のindexとrating
+            # rating matrix内のitem_id列のuser indicesとratingsを取得
             indices = self.item_user_list[j].indices
             ratings = self.item_user_list[j].ratings
-            # user factor vector(ここでは定数)を取得
+            # user latent vector(ここでは定数)を取得
             u = self.user_factor[:, indices]
             # 以下、更新式の計算(aが左側の項, bが右側の項)
             a = np.dot(u, u.T)
+            # aの対角成分にlambda_Vを追加?
             a[np.diag_indices_from(a)] += self.item_lambda
             b = np.dot(u, ratings)
-            # \lambda_V・cnn(W, X_j)の項を追加
+            # ConvMFの場合は、\lambda_V・cnn(W, X_j)の項を追加
             if additional is not None:
                 b += self.item_lambda * additional[j]
 
             # v_{j}の値を更新 a^{-1} * b
             self.item_factor[:, j] = np.linalg.solve(a, b)
-
 ```
+
+## 最後に 評価値推定用のメソッドを定義
+
+最後に、評価値の推定量$\hat{r}_{ij}$を求めるメソッドとして`.predict()`を定義しておきます。
+
+```python:matrix_factrization.py
+# 略
+
+class MatrixFactrization(object):
+    
+    # 略
+
+    def predict(self, users: List[int], items: List[int]) -> np.ndarray:
+        """user factor vectorとitem factor vectorの内積をとって、r\hat_{ij}を推定するメソッド。
+
+        Args:評価値を推定したい「userとitemのセット」を渡す。
+            users (List[int]): 評価値を予測したいユーザidのlist
+            items (List[int]): 評価値を予測したいアイテムidのlist
+        return:
+            入力したuser&itemに対応する、評価値の推定値\hat{r}_{ij}のndarray
+        """
+        ratings_hat = []
+        for user_i, item_i in zip(users, items):
+            # ベクトルの内積を計算
+            r_hat = np.inner(
+                self.user_factor[:, user_i],
+                self.item_factor[:, item_i]
+            )
+            ratings_hat.append(r_hat)
+        # ndarrayで返す。
+        return np.array(ratings_hat)
+```
+
+# テスト
+
+実装した`MatrixFactorization`クラスの挙動をテストしてみます。とりあえず今回は評価行列を受け取って学習まで！
+
+`make_rating_data()`関数で、MatrixFactorizationクラスに入力する、評価行列`ratings`を作成しています。
+
+```python:train.py
+from typing import List, Tuple
+import os
+import pandas as pd
+import numpy as np
+from model.matrix_factorization import RatingData, MatrixFactrization
+from config import Config
+
+def make_rating_data() -> List[RatingData]:
+    """評価値のcsvファイルから、ConvMFに入力するRatings情報(Rating Matrix)を作成する関数。
+
+    Returns:
+        List[RatingData]: Rating MatrixをCOO形式で。
+    """
+    ratings = pd.read_csv(Config.ratings_path).rename(
+        columns={'movie': 'item'})
+    ratings['user'] = ratings['user'].astype(np.int32)
+    ratings['item'] = ratings['item'].astype(np.int32)
+    ratings['rating'] = ratings['rating'].astype(np.float32)
+
+    print('='*10)
+    n_item = len(ratings['item'].unique())
+    n_user = len(ratings['user'].unique())
+    print(f'num of unique items is ...{n_item:,}')
+    print(f'num of unique users is ...{n_user:,}')
+    print(f'num of observed rating is ...{len(ratings):,}')
+    print(f'num of values of rating matrix is ...{n_user*n_item:,}')
+    print(f'So, density is {len(ratings)/(n_user*n_item) * 100 : .2f} %')
+
+    # DataFrameからRatingDataに型変換してReturn。
+    return [RatingData(*t) for t in ratings.itertuples(index=False)]
+
+
+if __name__ == '__main__':
+
+    ratings = make_rating_data()
+    mf = MatrixFactrization(ratings=ratings, n_factor=10)
+    mf.fit(n_trial=5, additional=None)
+```
+とりあえずMatrix Factorizationの学習プロセスまで問題なく回りました：)
+まだオフライン評価指標等は計算していませんが、以降のパートでValidationも実装していきます。
+
+また今回の実装では、学習プロセスにおける処理速度に問題を感じました。というのも、Matrix Factrizaitonにおけるハイパーパラメータの一つ「潜在次元数」`n_facotor`の値が10~20の場合は比較的スムーズに処理できますが、潜在次元数を100以上に増やしていくと時間計算量が一気に大きくなる印象を受けました。
+今回の実装ではシンプルにforループでuser latent vectorとitem latent vectorを一つずつ推定しているので、何らかの方法(ex. 処理を並列化, Cython?, etc.)で高速化を図る必要があるのかなと感じました。
+
 
 # 終わりに
 
-今回は「Convolutional Matrix Factorization for Document Context-Aware Recommendation」の理解と実装のパート2として、ConvMFのMatrix Factorization部分の実装をまとめました。
+今回の記事では「Convolutional Matrix Factorization for Document Context-Aware Recommendation」の理解と実装のパート2として、ConvMFのMatrix Factorization部分の実装をまとめました。
+今回の実装を経て、Matrix Factorizationの学習処理に対して、何らかの方法(ex. 処理を並列化, Cython?, etc.)で高速化を図る必要があるのかなと感じました。
 
 次回は、ConvMFの特徴である、CNNのパートを実装し、記事にまとめていきます。
 そしてこの一連のConvMFの実装経験を通じて、"Ratingデータ"＋"アイテムの説明文書"を活用した推薦システムについて実現イメージを得ると共に、"非常に疎な評価行列問題"や"コールドスタート問題"に対応し得る"頑健"な推薦システムについて理解を深めていきたいです。
 
-間違っている点や気になる点があれば、ぜひコメントにてアドバイスいただけますと嬉しいです：）
+理論や実装において、間違っている点や気になる点があれば、ぜひコメントにてアドバイスいただけますと嬉しいです：）

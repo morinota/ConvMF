@@ -18,14 +18,10 @@ def make_rating_data() -> List[RatingData]:
     ratings['user'] = ratings['user'].astype(np.int32)
     ratings['item'] = ratings['item'].astype(np.int32)
     ratings['rating'] = ratings['rating'].astype(np.float32)
-    print(ratings.head())
-    print(ratings.tail())
+
     print('='*10)
     n_item = len(ratings['item'].unique())
     n_user = len(ratings['user'].unique())
-    print(max(ratings['user'].unique()))
-    print(min(ratings['user'].unique()))
-
     print(f'num of unique items is ...{n_item:,}')
     print(f'num of unique users is ...{n_user:,}')
     print(f'num of observed rating is ...{len(ratings):,}')
@@ -127,6 +123,5 @@ if __name__ == '__main__':
     print(len(mf.user_item_list))
     print(len(mf.item_user_list[1]))
     print(mf.item_user_list[1].ratings)
-  
-    
+
     mf.fit(n_trial=5, additional=None)
