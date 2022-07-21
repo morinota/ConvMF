@@ -14,7 +14,7 @@ from dataloader import data_loader
 
 
 TEXT_FILE = r'..\data\descriptions.csv'
-FAST_TEXT_PATH = r'fastText\crawl-300d-2M.vec'
+FAST_TEXT_PATH = r'..\data\fastText\crawl-300d-2M.vec\crawl-300d-2M.vec'
 
 
 def load_data():
@@ -62,7 +62,6 @@ def main():
     # Load pretrained vectors
     embeddings = load_pretrained_vectors(word2idx, FAST_TEXT_PATH)
     embeddings = torch.tensor(embeddings)
-    print(embeddings)
 
     # train test split
     train_inputs, val_inputs, train_labels, val_labels = train_test_split(
@@ -117,7 +116,7 @@ def main():
     #                    )
 
     # # CNN-non-static: fastText pretrained word vectors are fine-tuned during training.
-    # # fastText 事前学習された単語ベクトルは学習中に微調整される
+    # # fastText 事前学習された単語ベクトルが使われ、学習中に微調整される
     # set_seed(42)
     # cnn_non_static, optimizer = initilize_model(
     #     pretrained_embedding=embeddings,

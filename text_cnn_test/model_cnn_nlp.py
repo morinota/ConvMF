@@ -67,6 +67,7 @@ class CNN_NLP(nn.Module):
         self.fc = nn.Linear(in_features=np.sum(
             num_filters), out_features=num_classes)
         self.dropout = nn.Dropout(p=dropout)
+
     def forward(self, input_ids):
         """Perform a forward pass through the network.
 
@@ -117,7 +118,7 @@ def initilize_model(pretrained_embedding=None,
                     num_classes=2,
                     dropout=0.5,
                     learning_rate=0.01,
-                    device:torch.device=None
+                    device: torch.device = None
                     ):
     """Instantiate a CNN model and an optimizer."""
     assert (len(filter_sizes) == len(num_filters)), "filter_sizes and \
