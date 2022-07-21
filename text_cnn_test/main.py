@@ -18,6 +18,11 @@ TEXT_FILE = r'data\descriptions.csv'
 FAST_TEXT_PATH = r'fastText\crawl-300d-2M.vec'
 
 
+def load_data():
+    texts_df = pd.read_csv(TEXT_FILE)
+    return texts_df
+
+
 def load_word_vector():
     URL = "https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip"
     FILE = "fastText"
@@ -26,11 +31,6 @@ def load_word_vector():
         print("fastText exists.")
     else:
         print('please download fastText.')
-
-
-def load_data():
-    texts_df = pd.read_csv(TEXT_FILE)
-    return texts_df
 
 
 def main():

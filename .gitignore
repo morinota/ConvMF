@@ -4,3 +4,6 @@
 *.vec 
 *.dat
 *.pl
+# 画像データもaddしない
+*.jpg
+*.png

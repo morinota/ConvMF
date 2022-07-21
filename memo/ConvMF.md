@@ -215,11 +215,11 @@ $$
 
 ## 3.2. CNN Architecture of ConvMF
 
-The objective of our CNN architecture is to generate document latent vectors from documents of items, which are used to compose the item latent models with epsilon variables. 本CNNアーキテクチャの目的は、相手うの文書からdocument latent vectors(文書潜在ベクトル)を生成し、それを用いてイプシロン変数でitem latent models(アイテム特徴行列)を構成することである。
+The objective of our CNN architecture is to generate document latent vectors from documents of items, which are used to compose the item latent models with epsilon variables. 本CNNアーキテクチャの目的は、アイテムの文書からdocument latent vectors(文書潜在ベクトル)を生成し、それを用いてイプシロン変数とitem latent models(アイテム特徴行列)を構成することである。
 
 Figure 2 shows our CNN architecture that consists of four layers; 1) embedding layer, 2) convolution layer, 3) pooling layer, and 4) output layer.図2は我々のCNNアーキテクチャを示し、1）埋め込み層、2）畳み込み層、3）プーリング層、4）出力層の4層から構成されている。
 
-![](../images/2022-06-19-19-58-28.png)
+![](https://d3i71xaburhd42.cloudfront.net/9e91c370a8fae365c731947ad9178fb3788f6593/500px/3-Figure2-1.png)
 
 ### 3.2.1. Embedding Layer 埋め込み層
 
@@ -252,7 +252,7 @@ $$
 - **畳み込み層によって抽出される文脈特徴 ** $c_i^j \in \mathbb{R}$ は、j 番目の共有重み $W_{c}^j \in \mathbb{R}^{p\times ws}$ によって抽出される。その**Window size $ws$ は周囲の単語数を決定**する。
 
 $$
-c_i^j = f(W_c^j * D_{(:, i:(i+ws -1))} + b_c^j) \tag{1}
+c_i^j = f(W_c^j * D_{(:, i:(i+ws -1))} + b_c^j) 
 $$
 
 ここで、
@@ -266,7 +266,7 @@ $$
 そして、$W_j^c$を持つDocument jの文脈特徴ベクトル(Contextual feature vector)$c^{j}\in \mathbb{R}^{l-ws +1}$が以下の式(2)によって構成される。
 
 $$
-c_j = [ c_1^j, c_2^j, \cdots, c_i^j, \cdots, c_{l-ws+1}^j]
+c_j = [c_1^j, c_2^j, \cdots, c_i^j, \cdots, c_{l-ws+1}^j]
 $$
 
 しかし、1つの共有重みShared Weightは、1種類の文脈特徴を捉える。
