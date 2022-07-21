@@ -2,17 +2,18 @@ from typing import Dict, List
 from tqdm import tqdm
 import pandas as pd
 import os
-import nltk
+# import nltk
 from collections import defaultdict
 import numpy as np
 # nltk.download('all')
-nltk.tokenize.word_tokenize
+import gensim
 
 
+def load_pretrained_vectors(word2idx: Dict[str, int], frame: str):
+    """学習済みの単語埋め込み(embedding)ベクトルのデータを読み込んで、
+    学習データのvocabularyに登録された各tokenに対応する、単語埋め込み(embedding)ベクトルを作成する。
+    Load pretrained vectors and create embedding layers.
 
-def load_pretrained_vectors(word2idx: Dict[str, int], frame:str):
-    """Load pretrained vectors and create embedding layers.
-    
     Args:
         word2idx (Dict): Vocabulary built from the corpus
         fname (str): Path to pretrained vector file
@@ -32,7 +33,7 @@ def load_pretrained_vectors(word2idx: Dict[str, int], frame:str):
     embeddings = np.random.uniform(
         low=-0.25, high=0.25,
         size=(len(word2idx), d)
-        )
+    )
     embeddings[word2idx['<pad>']] = np.zeros(shape=(d,))
 
     # Load pretrained vector
@@ -41,9 +42,9 @@ def load_pretrained_vectors(word2idx: Dict[str, int], frame:str):
         tokens = line.rstrip().split(' ')
         word = tokens[0]
         if word in word2idx:
-            count+=1
+            count += 1
             embeddings[word2idx[word]] = np.array(tokens[1:], dtype=np.float32)
-        
+
     print(f'There are {count} / {len(word2idx)} pretrained vector found.')
 
     return embeddings

@@ -48,6 +48,7 @@ def make_item_description(max_sentence_length=None) -> Tuple[np.ndarray, np.ndar
     descriptions = pd.read_csv(Config.descriptions_path).rename(
         columns={'movie': 'item'})
     texts = descriptions['description']
+    # 英文なので半角スペースでtokenize
     texts = texts.apply(lambda x: x.strip().split())
     # str.strip()：stringの両端の指定した文字を削除する.
     # defaultは空白文字(改行\nや全角スペース\u3000やタブ\tなどが空白文字とみなされ削除)
@@ -59,7 +60,7 @@ def make_item_description(max_sentence_length=None) -> Tuple[np.ndarray, np.ndar
     print(dictionary)
 
     # to index list
-    # 各description の各単語をindex化()
+    # 各description の各単語を通し番号化(encoding)
     texts = texts.apply(lambda x: dictionary.doc2idx(
         x, unknown_word_index=eos_id))
     # List[word_index]をndarray化(unknown_word_indexを含めない)

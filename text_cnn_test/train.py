@@ -14,6 +14,7 @@ from torch.utils.data import (TensorDataset, DataLoader, RandomSampler,
 # Specify loss function
 loss_fn = nn.CrossEntropyLoss()
 
+
 def set_seed(seed_value=42):
     """Set seed for reproducibility."""
     random.seed(seed_value)

@@ -224,6 +224,7 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
   - (**NLP では一般的に出力全体にわたってプーリングを適用する**。つまり各フィルタ(=>特徴マップ)からは **1 つの数値**が出力されることになる。)
 
 ### チャンネル数
+
 - チャンネルとは、**入力データを異なる視点から見たもの**と言える。
   - 画像認識での例を挙げると、普通は画像は RGB (red, green, blue) の 3 チャンネルを持っている。
   - 畳み込みはこれらのチャンネル全体に適用でき、その時のフィルタは各チャンネル毎に別々に用意してもいいし、同じものを使っても問題ない。
@@ -236,6 +237,36 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
 
 ConvMFのCNNパート$s_j = CNN(W, X_j)$に関しても、出力次元数と損失関数の形以外は、この実装と変わらないので、今回実装するスクリプトを調整すれば、すぐにできるはずです...!
 
+
+## データの準備
+
+今回は、パート1⃣で用意したデータセットの内、`descriptions.csv`のみを使用します。
+また、文章をtokenizeする為に、fastTextをダウンロードしておきます。
+
+```python:main.py
+TEXT_FILE = r'data\descriptions.csv'
+FAST_TEXT_PATH = r'fastText\crawl-300d-2M.vec'
+
+
+def load_data():
+    texts_df = pd.read_csv(TEXT_FILE)
+    return texts_df
+
+
+def load_word_vector():
+    URL = "https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip"
+    FILE = "fastText"
+
+    if os.path.isdir(FILE):
+        print("fastText exists.")
+    else:
+        print('please download fastText.')
+```
+
+## tokenizeの処理
+tokenizeとは、文章を何らかの単位に区切る事を意味します。
+
+今回は映画の説明文に対して、「単語」をtokenとしてtokenizeします。
 
 
 # 終わりに
