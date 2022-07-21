@@ -61,7 +61,7 @@ def main():
 
     # Load pretrained vectors
     embeddings = load_pretrained_vectors(word2idx, FAST_TEXT_PATH)
-    embeddings = torch.tensor(embeddings)
+    embeddings = torch.tensor(embeddings)  # np.ndarray => torch.Tensor
 
     # train test split
     train_inputs, val_inputs, train_labels, val_labels = train_test_split(
