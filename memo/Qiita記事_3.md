@@ -237,11 +237,12 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
 
 ConvMFのCNNパート$s_j = CNN(W, X_j)$に関しても、出力次元数と損失関数の形以外は、この実装と変わらないので、今回実装するスクリプトを調整すれば、すぐにできるはずです...!
 
-
 ## データの準備
 
-今回は、パート1⃣で用意したデータセットの内、`descriptions.csv`のみを使用します。
+今回は、パート1⃣で用意したデータセットの内、各映画の説明文`descriptions.csv`のみを使用します。
 また、文章をtokenizeする為に、fastTextをダウンロードしておきます。
+
+加えて、今回は練習として２クラス分類問題を解くCNNを実装するので、各映画の説明文に対して適当に0か1のラベルを割り振ります。
 
 ```python:main.py
 TEXT_FILE = r'data\descriptions.csv'
@@ -261,21 +262,488 @@ def load_word_vector():
         print("fastText exists.")
     else:
         print('please download fastText.')
+
+
+def main():
+    load_word_vector()
+
+    texts_df = load_data()
+    print(texts_df.head())
+
+    # 文章をList[List[str]]として取得
+    texts = texts_df['description'].to_list()
+
+    # 今回は実装テストなので、labelを適当に作成
+    labels = np.array(
+        [0]*len(texts[:len(texts) % 2])
+        + [1]*len(texts[len(texts) % 2:])
+    )
+
+    # データのサイズの確認
+    print(
+        f'the num of texts data is {len(texts)}, and the num of labels is {len(labels)}.')
+```
+
+一応、上記のコードを回した結果の出力が以下になります。
+
+```
+                                        title                                        description  id
+0    pirates of the caribbean: at world's end  Captain Barbossa, long believed to be dead, ha...   0
+1                                spider-man 3  The seemingly invincible Spider-Man goes up ag...   1
+2                            superman returns  Superman returns to discover his 5-year absenc...   2
+3                           quantum of solace  Quantum of Solace continues the adventures of ...   3
+4  pirates of the caribbean: dead man's chest  Captain Jack Sparrow works his way out of a bl...   4
+the num of texts data is 2243, and the num of labels is 2243.
 ```
 
 ## tokenizeの処理
+
+続いて、tokenizeの処理を実装していきます。
 tokenizeとは、文章を何らかの単位に区切る事を意味します。
 
 今回は映画の説明文に対して、「単語」をtokenとしてtokenizeします。
+実装には、`gensim.utils`モジュールの`tokenize()`関数を用いています。
 
+以下で定義された`conduct_tokenize()`関数は、文章のリストを`texts`引数として受け取って、tokenizeされた文章のリスト`tokenized_texts`、学習データに含まれる全ての単語(token)を通し番号として登録した`word2idx`、学習データの中の文章の最大長さ`max_len`の3つを返します。
+
+```python:tokenizes.py
+from typing import Dict, List
+from tqdm import tqdm
+import pandas as pd
+import os
+from collections import defaultdict
+import numpy as np
+import gensim
+
+def conduct_tokenize(texts: List[str]):
+    """文章を単語をtokenとしてtokenizeする。
+    全文章に使われている単語を確認しvocabularyを生成すると共に、文章の最大長さを記録する。
+    Tokenize texts, build vocabulary and find maximum sentence length.
+
+    Args:
+        texts (List[str]): List of text data
+
+    Returns:
+        tokenized_texts (List[List[str]]): List of list of tokens
+        word2idx (Dict): Vocabulary built from the corpus
+        max_len (int): Maximum sentence length
+    """
+
+    # 結果格納用の変数をInitialize
+    tokenized_texts: List[List[str]] = []
+    word2idx: Dict[str, int] = {}
+    max_len = 0
+
+    # Add <pad> and <unk> tokens to the vocabulary
+    word2idx['<pad>'] = 0  # 長さの短いSentenceに対して、長さをmax_lenにそろえるために使う?
+    word2idx['<unk>'] = 1  # 未知のtokenに対する通し番号
+
+    # Building our vocab from the corpus starting from index 2
+    idx = 2
+
+    # 各文章に対して繰り返し処理
+    for text in texts:
+        # tokenize
+        # tokenized_text = nltk.tokenize.word_tokenize(text=text)
+        tokenized_text = gensim.utils.tokenize(text=text)
+        tokenized_text = list(tokenized_text)
+
+        # Add `tokenized_text` to `tokenized_texts`
+        tokenized_texts.append(tokenized_text)
+
+        # Add new token to `word2idx`
+        # text内の各tokenをチェックしていく...
+        for token in tokenized_text:
+            # word2idxに登録されていないtoken(単語?)があれば、通し番号を登録!
+            if token not in word2idx:
+                word2idx[token] = idx
+                idx += 1
+
+        # Update `max_len`
+        max_len = max(max_len, len(tokenized_text))
+
+    return tokenized_texts, word2idx, max_len
+```
+
+続いて、tokenizedされた文章データ(`List[List[str]]`)を、通し番号化(`List[List[int]]`)する為に、`encode()`関数を定義します。要するにtokenizeされた単語のListを、CNNに入力する形に変換する処理ですね！
+
+`encode()`関数では、tokenizeされた各テキストを、the maximum sentence lengthに合わせてゼロパディングする。
+その後、tokenizeされたテキスト内の各tokenを、vocabularyの通し番号にencode(符号化)しています。
+
+```python:tokenizes.py
+
+# 略
+
+def encode(tokenized_texts: List[List[str]], word2idx: Dict[str, int], max_len: int):
+    """tokenizeされた各テキストを、the maximum sentence lengthに合わせてゼロパディングする。
+    加えて、tokenizeされたテキスト内の各tokenを、vocabularyの通し番号にencode(符号化)する.
+    Pad each sentence to the maximum sentence length and encode tokens to
+    their index in the vocabulary.
+
+    Returns:
+        input_ids (np.array): Array of token indexes in the vocabulary with
+            shape (N, max_len). It will the input of our CNN model.
+    """
+
+    input_ids: List[List[int]] = []
+    for tokenized_text in tokenized_texts:
+        # tokenized_textの長さがmax_lenと一致するように、最後尾に<pad>を追加する。
+        # Pad sentences to max_len
+        tokenized_text += ['<pad>'] * (max_len - len(tokenized_text))
+
+        # tokenized_text内の各tokenを通し番号へ符号化
+        # Encode tokens to input_ids
+        input_id: List[int] = [word2idx.get(token) for token in tokenized_text]
+        input_ids.append(input_id)
+
+    # 最後は配列としてReturn
+    # (R^{n \times max_len}の行列。各要素はtokenの通し番号)
+    return np.array(input_ids)
+```
+
+上で定義した関数を、`main.py`内で呼び出し、学習データである映画の説明文に対して、tokenize & encodeしていきます。
+
+```python:main.py
+# 略(文章データのload + ラベルの振り分けまで完了)
+
+# Tokenize, build vocabulary, encode tokens
+print('Tokenizing...\n')
+tokenized_texts, word2idx, max_len = conduct_tokenize(texts=texts)
+print(f'the num of vocabrary is {len(word2idx) - 2}')
+print(f'max len of texts is {max_len}')
+input_ids = encode(tokenized_texts, word2idx, max_len)
+print(f'the shape of input_ids is {input_ids.shape}')
+```
+
+上記のコードを回した結果が以下になります。
+
+```
+Tokenizing...
+
+the num of vocabrary is 15246
+max len of texts is 174
+the shape of input_ids is (2243, 174)
+```
+
+学習データに含まれるユニークな単語(token)数は15246個であり、一つの文章における最大長さ(最大token数)が174らしいです。
+そして、tokenize及びencodeの処理を経て、CNNに入力する前の学習データが2243(データ数) \* 174(token数)の行列として用意されました。
+
+## 学習済み単語埋め込みベクトルの読み込み
+
+さて続いて、学習済みの単語埋め込み(Embedding)ベクトルのデータを、CNNの学習に使えるように読み込みます。
+ここで読み込んだデータは、CNN内のEmbedding layerにて、前述した文章学習データ(=2243(データ数) \* 174(token数)の行列)の各要素(=各単語の通し番号)を単語埋め込みベクトルに変換する際に使われます。
+
+今回は、学習済みの単語埋め込み(Embedding)ベクトルのデータとしてfastTextをダウンロードしておきました。
+
+以下が、学習済みの単語埋め込み(Embedding)ベクトルのデータを読み込む処理になります。
+`load_pretrained_vectors()`は、`conduct_tokenize()`の返り値として得られた「単語と通し番号の対応表」(`word2idx:Dict`)と「学習済みの単語埋め込み(embedding)ベクトルのデータの保存先」を引数として受け取り、対応表の各単語を表現する為の単語埋め込みベクトルを返します。
+
+実際の返り値としては、`word2idx`の各通し番号を行indexとして、各行に単語埋め込み(Embedding)ベクトルが格納された`numpy.ndarray`になります。
+
+```python:pretrained_vec.py
+from typing import Dict, List
+from tqdm import tqdm
+import pandas as pd
+import os
+from collections import defaultdict
+import numpy as np
+import gensim
+
+
+def load_pretrained_vectors(word2idx: Dict[str, int], frame: str):
+    """学習済みの単語埋め込み(embedding)ベクトルのデータを読み込んで、
+    学習データのvocabularyに登録された各tokenに対応する、単語埋め込み(embedding)ベクトルを作成する。
+    Load pretrained vectors and create embedding layers.
+
+    Args:
+        word2idx (Dict): Vocabulary built from the corpus
+        fname (str): Path to pretrained vector file
+
+    Returns:
+        embeddings (np.array): Embedding matrix with shape (N, d) where N is
+            the size of word2idx and d is embedding dimension
+            配列の行indexが、word2idxの通し番号に対応。
+    """
+
+    print('Loading pretrained vectors...')
+    # ファイルを開いて...
+    fin = open(frame, encoding='utf-8', newline='\n', errors='ignore')
+    # intで行数とか(?)を取得
+    n, d = map(int, fin.readline().split())  # 登録されてる単語数, 埋め込みベクトルの次元数
+
+    # Initilize random embeddings
+    embeddings: np.ndarray = np.random.uniform(
+        low=-0.25, high=0.25,
+        size=(len(word2idx), d)  # (Vocabularyに登録された単語数, 埋め込みベクトルの次元数)
+    )
+    # <pad>の埋め込みベクトルは0ベクトル
+    embeddings[word2idx['<pad>']] = np.zeros(shape=(d,))
+
+    # Load pretrained vector
+    count = 0
+    for line in tqdm(fin):
+        # 学習済みモデルに登録されている単語と、対応する埋め込みベクトルを取得。
+        tokens = line.rstrip().split(' ')
+        word = tokens[0]
+        # 今回のVocabularyにある単語の場合
+        if word in word2idx:
+            count += 1
+            # 配列の行index = word2idxの通し番号として、埋込ベクトルを保存
+            embeddings[word2idx[word]] = np.array(tokens[1:], dtype=np.float32)
+
+    print(f'There are {count} / {len(word2idx)} pretrained vector found.')
+
+    return embeddings
+```
+
+では、上記で実装した`load_pretrained_vectors()`関数を`main.py`で呼び出し、学習データ内で出現する各単語(token)に対応する単語埋め込みベクトルを取得します。
+
+```python:main.py
+# 略(文章データ読み込み + 疑似ラベル生成)
+
+# 略(文章データに対して、tokenize + encode)
+
+# Load pretrained vectors
+embeddings = load_pretrained_vectors(word2idx, FAST_TEXT_PATH)
+
+embeddings = torch.tensor(embeddings)  # np.ndarray => torch.Tensor
+
+print()
+```
+
+上記処理の実行結果は、以下のようになります。
+
+```
+Loading pretrained vectors...
+1999995it [01:37, 20484.44it/s]
+There are 15090 / 15248 pretrained vector found.
+the shape of embedding_vectors is (15248, 300)
+```
+
+学習データに含まれるユニークな単語(token)数=15246個の内、15090個が事前学習された単語埋め込みベクトルの中に見つかったようです。
+また、返り値`embeddings`の`shape`属性を確認したところ、単語埋め込みベクトルの次元数は300のようですね！
+
+## CNN_NLPクラスの実装
+
+さてようやく、`CNN_NLP`クラスを実装していきます。
+以下が、`CNN_NLP`クラスの実装部分になります。
+
+まずコンストラクタ`.__init__()`では、Embedding layerで使用する単語埋め込みベクトルを指定しています。引数として渡された場合はそれを使用し、引数で渡されなかった場合は単語埋め込みベクトル`nn.Embedding`をInitializeしています。
+その下では、CNNの各layerを定義しています。
+本クラスで定義するCNNの構造は、前Chapterで述べた以下のアーキテクチャを採用しています。
+
+![](https://tkengo.github.io/assets/img/understanding-convolutional-neural-networks-for-nlp/convolutional-neural-network-for-nlp-without-pooling.png)
+
+```python:model_cnn_nlp.py
+from typing import List, Tuple
+from torch import Tensor
+import torch.optim as optim
+from turtle import forward
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+
+
+class CNN_NLP(nn.Module):
+    """
+    文章分類の為の一次元CNN
+    An 1D Convulational Neural Network for Sentence Classification.
+    """
+
+    def __init__(self, pretrained_embedding: torch.Tensor = None,
+                 freeze_embedding=False,
+                 vocab_size=None,
+                 embed_dim=300,
+                 filter_sizes=[3, 4, 5],
+                 num_filters=[100, 100, 100],
+                 dim_output: int = 2,
+                 dropout: float = 0.5
+                 ) -> None:
+        """
+        CNN_NLPクラスのコンストラクタ
+        The constructor for CNN_NLP class.
+
+        Args:
+            pretrained_embedding (torch.Tensor): Pretrained embeddings with
+                shape (vocab_size, embed_dim)。学習済みの単語埋め込みベクトル。
+                Default: None
+            freeze_embedding (bool): Set to False to fine-tune pretraiend
+                vectors. 学習済みの単語埋め込みベクトルをfine-tuningするか否か。
+                Default: False
+            vocab_size (int): Need to be specified when not pretrained word
+                embeddings are not used. 学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
+                Default: None
+            embed_dim (int): Dimension of word vectors. Need to be specified
+                when pretrained word embeddings are not used.
+                学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
+                Default: 300
+            filter_sizes (List[int]): List of filter sizes.
+            畳み込み層のスライド窓関数のwindow sizeを指定する。
+            Default: [3, 4, 5]
+            num_filters (List[int]): List of number of filters, has the same
+                length as `filter_sizes`. 畳み込み層のスライド窓関数(Shared weihgt)の数
+                Default: [100, 100, 100]
+            dim_output (int): Number of classes. 最終的なCNNの出力次元数。
+            Default: 2
+
+            dropout (float): Dropout rate. 中間層のいくつかのニューロンを一定確率でランダムに選択し非活性化する。
+            Default: 0.5
+        """
+        super(CNN_NLP, self).__init__()
+
+        # Embedding layerの定義
+        # 学習済みの単語埋め込みベクトルの配列が渡されていれば...
+        if pretrained_embedding is not None:
+            self.vocab_size, self.embed_dim = pretrained_embedding.shape
+            self.embedding = nn.Embedding.from_pretrained(
+                pretrained_embedding,
+                freeze=freeze_embedding
+            )
+        # 渡されていなければ...
+        else:
+            self.embed_dim = embed_dim
+            # 単語埋め込みベクトルを初期化
+            self.embedding = nn.Embedding(
+                num_embeddings=vocab_size,  # 語彙サイズ
+                embedding_dim=self.embed_dim,  # 埋め込みベクトルの次元数
+                padding_idx=0,  # 文章データ(系列データ)の長さの統一：ゼロパディング
+                # 単語埋め込みベクトルのnorm(長さ?)の最大値の指定。これを超える単語ベクトルはnorm=max_normとなるように正規化される?
+                max_norm=5.0
+            )
+
+        # Conv Networkの定義
+        modules = []
+        # スライド窓関数のwindow size(resign size)の種類分、繰り返し処理
+        for i in range(len(filter_sizes)):
+            # 畳み込み層の定義
+            conv_layer = nn.Conv1d(
+                # 入力チャネル数:埋め込みベクトルの次元数
+                in_channels=self.embed_dim,
+                # 出力チャネル数(pooling後、resign size毎に代表値を縦にくっつける)
+                out_channels=num_filters[i],
+                # window size(resign size)(Conv1dなので高さのみ指定)
+                kernel_size=filter_sizes[i],
+                padding=0,  # ゼロパディング
+                stride=1  # ストライド
+            )
+            # 保存
+            modules.append(conv_layer)
+        # 一次元の畳み込み層として保存
+        self.conv1d_list = nn.ModuleList(modules=modules)
+
+        # 全結合層(中間層なし)とDropoutの定義
+        # Fully-connected layer and Dropout
+        self.fc = nn.Linear(
+            in_features=np.sum(num_filters),
+            out_features=dim_output
+        )
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, input_ids):
+        """Perform a forward pass through the network.
+
+        Args:
+            input_ids (torch.Tensor): A tensor of token ids with shape
+                (batch_size, max_sent_length)
+
+        Returns:
+            logits (torch.Tensor): Output logits with shape (batch_size,
+                dim_output)
+        """
+        # Get embeddings from `input_ids`. Output shape: (b, max_len, embed_dim)
+        # Embedding層にtokenizedされたテキスト(符号化済み)を渡して、文書行列を取得する
+        x_embed: Tensor = self.embedding(input_ids).float()
+
+        # Permute `x_embed` to match input shape requirement of `nn.Conv1d`.
+        # Tensorの軸の順番を入れ替える:(batch_size, max_len, embed_dim)=>(batch_size, embed_dim, max_len)
+        x_reshaped = x_embed.permute(0, 2, 1)
+        # Output shape:(batch_size, embed_dim, max_len)
+
+        # Apply CNN and ReLU.
+        # Output shape: (batch_size, num_filters[i], L_out(convolutionの出力数))
+        x_conv_list: List[Tensor] = [F.relu(conv1d(x_reshaped))
+                                     for conv1d in self.conv1d_list]
+
+        # Max pooling.
+        # 各convolutionの出力値にmax poolingを適用して、一つの代表値に。
+        # Output shape: (batch_size, num_filters[i], 1)
+        # kernel_size引数はx_convの次元数に！=>poolingの出力は1次元!
+        x_pool_list: List[Tensor] = [
+            F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list
+        ]
+
+        # Concatenate x_pool_list to feed the fully connected layer(全結合層).
+        # x_pool_listを連結して、fully connected layerに投入する為のshapeに変換
+        # Output shape: (batch_size, sum(num_filters)=今回は100+100+100=300)
+        x_fc: Tensor = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list],
+                                 dim=1)
+
+        # Compute logits. Output shape: (batch_size, dim_output)
+        logits = self.fc(self.dropout(x_fc))
+
+        return logits
+```
+
+`.forward()`では、`CNN_NLP`インスタンスが入力値(=tokenize & encodeされた文章データ)を受け取ってCNNの出力値を返す処理を実装しています。
+
+## 学習データとラベルのセットをDataLoaderに～
+
+```python:dataloader.py
+import torch
+from torch.utils.data import (
+    TensorDataset, DataLoader, RandomSampler, SequentialSampler)
+import numpy as np
+
+
+def data_loader(train_inputs: np.ndarray, val_inputs: np.ndarray, train_labels: np.ndarray, val_labels: np.ndarray, batch_size: int = 50):
+    """Convert train and validation sets to torch.Tensors and load them to DataLoader.
+
+    Parameters
+    ----------
+    train_inputs : np.ndarray
+        学習用データ(tokenize & encode された文章データ)
+    val_inputs : np.ndarray
+        検証用データ(tokenize & encode された文章データ)
+    train_labels : np.ndarray
+        学習用データ(ラベル)
+    val_labels : np.ndarray
+        検証用データ(ラベル)
+    batch_size : int, optional
+        バッチサイズ, by default 50
+
+    Returns
+    -------
+    Tuple[DataLoader]
+        学習用と検証用のDataLoaderをそれぞれ返す。
+    """
+
+    # Convert data type to torch.Tensor
+    train_inputs, val_inputs, train_labels, val_labels =\
+        tuple(torch.tensor(data) for data in
+              [train_inputs, val_inputs, train_labels, val_labels])
+
+    # Create DataLoader for training data
+    train_data = TensorDataset(train_inputs, train_labels)
+    train_sampler = RandomSampler(train_data)
+    train_dataloader = DataLoader(
+        train_data, sampler=train_sampler, batch_size=batch_size)
+
+    # Create DataLoader for validation data
+    val_data = TensorDataset(val_inputs, val_labels)
+    val_sampler = SequentialSampler(val_data)
+    val_dataloader = DataLoader(
+        val_data, sampler=val_sampler, batch_size=batch_size)
+
+    return train_dataloader, val_dataloader
+```
 
 # 終わりに
 
-NLPにおけるCNNだけで長くなってしまったので、次回は今回実装したCNNをConvMF用にアレンジしていきます。
-
 今回の記事では「Convolutional Matrix Factorization for Document Context-Aware Recommendation」の理解と実装のパート3として、ConvMFのCNN部分の実装をまとめました。
 
-次回は、ConvMFの特徴である、CNNのパートを実装し、記事にまとめていきます。
+NLPにおけるCNNを実装するだけで長くなってしまったので、次回は今回実装したCNNをConvMF用にアレンジしていきます。
+
 そしてこの一連のConvMFの実装経験を通じて、"Ratingデータ"＋"アイテムの説明文書"を活用した推薦システムについて実現イメージを得ると共に、"非常に疎な評価行列問題"や"コールドスタート問題"に対応し得る"頑健"な推薦システムについて理解を深めていきたいです。
 
 理論や実装において、間違っている点や気になる点があれば、ぜひコメントにてアドバイスいただけますと嬉しいです：）

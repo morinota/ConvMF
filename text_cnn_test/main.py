@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 from tokenizes import conduct_tokenize, encode
 from pretrained_vec import load_pretrained_vectors
 from model_cnn_nlp import initilize_model
-from train import train, set_seed
+from train_nlp_cnn import train, set_seed
 from dataloader import data_loader
 
 
@@ -61,6 +61,7 @@ def main():
 
     # Load pretrained vectors
     embeddings = load_pretrained_vectors(word2idx, FAST_TEXT_PATH)
+    print(f'the shape of embedding_vectors is {embeddings.shape}')
     embeddings = torch.tensor(embeddings)  # np.ndarray => torch.Tensor
 
     # train test split
@@ -97,23 +98,23 @@ def main():
     #                  epochs=20, device=device
     #                  )
 
-    # # CNN-static: fastText pretrained word vectors are used and freezed during training.
-    # # fastText 事前学習された単語ベクトルが使われ、学習中は凍結される。
-    # set_seed(42)
-    # cnn_static, optimizer = initilize_model(
-    #     pretrained_embedding=embeddings,
-    #     freeze_embedding=True,
-    #     learning_rate=0.25,
-    #     dropout=0.5, device=device
-    # )
+    # CNN-static: fastText pretrained word vectors are used and freezed during training.
+    # fastText 事前学習された単語ベクトルが使われ、学習中は凍結される。
+    set_seed(42)
+    cnn_static, optimizer = initilize_model(
+        pretrained_embedding=embeddings,
+        freeze_embedding=True,
+        learning_rate=0.25,
+        dropout=0.5, device=device
+    )
 
-    # cnn_static = train(model=cnn_static,
-    #                    optimizer=optimizer,
-    #                    train_dataloader=train_dataloader,
-    #                    val_dataloader=val_dataloader,
-    #                    epochs=20,
-    #                    device=device
-    #                    )
+    cnn_static = train(model=cnn_static,
+                       optimizer=optimizer,
+                       train_dataloader=train_dataloader,
+                       val_dataloader=val_dataloader,
+                       epochs=20,
+                       device=device
+                       )
 
     # # CNN-non-static: fastText pretrained word vectors are fine-tuned during training.
     # # fastText 事前学習された単語ベクトルが使われ、学習中に微調整される

@@ -6,7 +6,6 @@ import os
 from collections import defaultdict
 import numpy as np
 import gensim
-# nltk.download('all')
 
 
 def conduct_tokenize(texts: List[str]):

@@ -1,3 +1,4 @@
+from typing import List, Tuple
 from torch import Tensor
 import torch.optim as optim
 from turtle import forward
@@ -94,7 +95,7 @@ class CNN_NLP(nn.Module):
         # 一次元の畳み込み層として保存
         self.conv1d_list = nn.ModuleList(modules=modules)
 
-        # 全結合層とDropoutの定義
+        # 全結合層(中間層なし)とDropoutの定義
         # Fully-connected layer and Dropout
         self.fc = nn.Linear(
             in_features=np.sum(num_filters),
@@ -111,41 +112,50 @@ class CNN_NLP(nn.Module):
 
         Returns:
             logits (torch.Tensor): Output logits with shape (batch_size,
-                n_classes)
+                dim_output)
         """
         # Get embeddings from `input_ids`. Output shape: (b, max_len, embed_dim)
         # Embedding層にtokenizedされたテキスト(符号化済み)を渡して、文書行列を取得する
         x_embed: Tensor = self.embedding(input_ids).float()
 
         # Permute `x_embed` to match input shape requirement of `nn.Conv1d`.
-        # Tensorの軸の順番を入れ替える。()
+        # Tensorの軸の順番を入れ替える:(batch_size, max_len, embed_dim)=>(batch_size, embed_dim, max_len)
         x_reshaped = x_embed.permute(0, 2, 1)
-        # Output shape: (batch_size, max_len, embed_dim)=>(batch_size, embed_dim, max_len)に変換
+        # Output shape:(batch_size, embed_dim, max_len)
 
-        # Apply CNN and ReLU. Output shape: (b, num_filters[i], L_out)
-        x_conv_list = [F.relu(conv1d(x_reshaped))
-                       for conv1d in self.conv1d_list]
+        # Apply CNN and ReLU.
+        # Output shape: (batch_size, num_filters[i], L_out(convolutionの出力数))
+        x_conv_list: List[Tensor] = [F.relu(conv1d(x_reshaped))
+                                     for conv1d in self.conv1d_list]
 
-        # Max pooling. Output shape: (b, num_filters[i], 1)
-        x_pool_list = [F.max_pool1d(
-            x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list]
+        # Max pooling.
+        # 各convolutionの出力値にmax poolingを適用して、一つの代表値に。
+        # Output shape: (batch_size, num_filters[i], 1)
+        # kernel_size引数はx_convの次元数に！=>poolingの出力は1次元!
+        x_pool_list: List[Tensor] = [
+            F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list
+        ]
 
         # Concatenate x_pool_list to feed the fully connected layer(全結合層).
-        # Output shape: (b, sum(num_filters))
-        x_fc = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list],
-                         dim=1)
+        # x_pool_listを連結して、fully connected layerに投入する為のshapeに返還
+        # Output shape: (batch_size, sum(num_filters))
+        x_fc: Tensor = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list],
+                                 dim=1)
 
-        # Compute logits. Output shape: (b, n_classes)
+        # Compute logits. Output shape: (batch_size, dim_output)
         logits = self.fc(self.dropout(x_fc))
 
         return logits
 
 
-"""To train Deep Learning models, we need to define a loss function and minimize this loss. We’ll use back-propagation to compute gradients and use an optimization algorithm (ie. Gradient Descent) to minimize the loss. The original paper used the Adadelta optimizer.Deep Learningのモデルを学習させるためには、損失関数を定義し、この損失を最小化する必要があります。バックプロパゲーションを用いて勾配を計算し、最適化アルゴリズム（gradient Descentなど）を用いて損失を最小化することになります。元の論文ではAdadeltaオプティマイザを使用しています。
+"""To train Deep Learning models, we need to define a loss function and minimize this loss. We’ll use back-propagation to compute gradients and use an optimization algorithm (ie. Gradient Descent) to minimize the loss. 
+The original paper used the Adadelta optimizer.
+Deep Learningのモデルを学習させるためには、損失関数を定義し、この損失を最小化する必要があります。バックプロパゲーションを用いて勾配を計算し、最適化アルゴリズム（gradient Descentなど）を用いて損失を最小化することになります。
+元の論文ではAdadeltaオプティマイザを使用しています。
 """
 
 
-def initilize_model(pretrained_embedding=None,
+def initilize_model(pretrained_embedding: torch.Tensor = None,
                     freeze_embedding=False,
                     vocab_size=None,
                     embed_dim=300,
@@ -155,8 +165,52 @@ def initilize_model(pretrained_embedding=None,
                     dropout=0.5,
                     learning_rate=0.01,
                     device: torch.device = None
-                    ):
-    """Instantiate a CNN model and an optimizer."""
+                    ) -> Tuple[CNN_NLP, optim.Adadelta]:
+    """Instantiate a CNN model and an optimizer.
+
+    Parameters
+    ----------
+    pretrained_embedding (torch.Tensor): 
+        Pretrained embeddings with
+        shape (vocab_size, embed_dim)。学習済みの単語埋め込みベクトル。
+        Default: None
+    freeze_embedding (bool): 
+        Set to False to fine-tune pretraiend
+        vectors. 学習済みの単語埋め込みベクトルをfine-tuningするか否か。
+        Default: False
+    vocab_size (int): 
+        Need to be specified when not pretrained word
+        embeddings are not used. 学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
+        Default: None
+    embed_dim (int): 
+        Dimension of word vectors. Need to be specified
+        when pretrained word embeddings are not used. 
+        学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
+        Default: 300
+    filter_sizes (List[int]): 
+        List of filter sizes. 
+        畳み込み層のスライド窓関数のwindow sizeを指定する。
+        Default: [3, 4, 5]
+    num_filters (List[int]): 
+        List of number of filters, has the same
+        length as `filter_sizes`. 畳み込み層のスライド窓関数(Shared weihgt)の数
+        Default: [100, 100, 100]
+    dim_output (int): 
+        Number of classes. 最終的なCNNの出力次元数。
+        Default: 2
+    dropout (float): 
+        Dropout rate. 中間層のいくつかのニューロンを一定確率でランダムに選択し非活性化する。
+        Default: 0.5
+    learning_rate : float, optional
+        Optimizerの学習率, by default 0.01
+    device : torch.device, optional
+        学習時に使用する計算機(CPUかGPUか), by default None
+
+    Returns
+    -------
+    Tuple(CNN_NLP, optim.Adadelta)
+        Initializeしたモデルと、Optimizerオブジェクトを返す。
+    """
     assert (len(filter_sizes) == len(num_filters)), "filter_sizes and \
     num_filters need to be of the same length."
 
@@ -175,9 +229,9 @@ def initilize_model(pretrained_embedding=None,
     cnn_model.to(device)
 
     # Instantiate Adadelta optimizer
-    optimizer = optim.Adadelta(cnn_model.parameters(),
-                               lr=learning_rate,
-                               rho=0.95
+    optimizer = optim.Adadelta(params=cnn_model.parameters(),  # 最適化対象
+                               lr=learning_rate,  # parameter更新の学習率
+                               rho=0.95  # 移動指数平均の係数(? きっとハイパーパラメータ)
                                )
 
     return cnn_model, optimizer
