@@ -53,7 +53,6 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
     best_accuracy = 0
 
     print("Start training...\n")
-    print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
     print("-"*60)
 
     # エポック毎に繰り返し
@@ -121,10 +120,12 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
             # Print performance over the entire training data
             time_elapsed = time.time() - t0_epoch
             print(f"the validation result of epoch {epoch_i + 1:^7} is below.")
-            print('the values of loss function')
-            print(f'train(average):{avg_train_loss:.6f},valid:{val_loss:.6f}')
+            print(
+                f'the values of loss function : train(average)={avg_train_loss:.6f}, valid={val_loss:.6f}')
             print(
                 f'accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}')
+
+        print('-'*20)
 
     print("\n")
     print(f"Training complete! Best accuracy: {best_accuracy:.2f}%.")

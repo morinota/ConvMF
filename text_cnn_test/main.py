@@ -6,15 +6,16 @@ import torch
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 # nltk.download('all')
-from tokenizes import conduct_tokenize, encode
-from pretrained_vec import load_pretrained_vectors
-from model_cnn_nlp import initilize_model
-from train_nlp_cnn import train, set_seed
-from dataloader import create_data_loaders
+from utils.tokenizes import conduct_tokenize, encode
+from utils.pretrained_vec import load_pretrained_vectors
+from cnn_nlp_model.model_cnn_nlp import initilize_model
+from cnn_nlp_model.train_nlp_cnn import train, set_seed
+from utils.dataloader import create_data_loaders
 
 
 TEXT_FILE = r'..\data\descriptions.csv'
-FAST_TEXT_PATH = r'..\data\fastText\crawl-300d-2M.vec\crawl-300d-2M.vec'
+FAST_TEXT_PATH = r'..\data\fastText\crawl-300d-2M.vec'
+# FAST_TEXT_PATH = r'..\data\fastText\crawl-300d-2M.vec\crawl-300d-2M.vec'
 
 
 def load_data():
@@ -82,21 +83,6 @@ def main():
     device = torch.device(
         'cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    # # CNN-rand: Word vectors are randomly initialized(Word vectorの初期値をランダムにしたVer.)
-    # set_seed(42)
-    # cnn_rand, optimizer = initilize_model(
-    #     vocab_size=len(word2idx),
-    #     embed_dim=300,
-    #     learning_rate=0.25,
-    #     dropout=0.5, device=device
-    # )
-
-    # cnn_rand = train(model=cnn_rand,
-    #                  optimizer=optimizer,
-    #                  train_dataloader=train_dataloader,
-    #                  val_dataloader=val_dataloader,
-    #                  epochs=20, device=device
-    #                  )
 
     # CNN-static: fastText pretrained word vectors are used and freezed during training.
     # fastText 事前学習された単語ベクトルが使われ、学習中は凍結される。
@@ -115,6 +101,23 @@ def main():
                     epochs=20,
                     device=device
                     )
+
+                    
+    # # CNN-rand: Word vectors are randomly initialized(Word vectorの初期値をランダムにしたVer.)
+    # set_seed(42)
+    # cnn_rand, optimizer = initilize_model(
+    #     vocab_size=len(word2idx),
+    #     embed_dim=300,
+    #     learning_rate=0.25,
+    #     dropout=0.5, device=device
+    # )
+
+    # cnn_rand = train(model=cnn_rand,
+    #                  optimizer=optimizer,
+    #                  train_dataloader=train_dataloader,
+    #                  val_dataloader=val_dataloader,
+    #                  epochs=20, device=device
+    #                  )
 
     # # CNN-non-static: fastText pretrained word vectors are fine-tuned during training.
     # # fastText 事前学習された単語ベクトルが使われ、学習中に微調整される
