@@ -4,7 +4,7 @@ from torch.utils.data import (
 import numpy as np
 
 
-def data_loader(train_inputs: np.ndarray, val_inputs: np.ndarray, train_labels: np.ndarray, val_labels: np.ndarray, batch_size: int = 50):
+def create_data_loaders(train_inputs: np.ndarray, val_inputs: np.ndarray, train_labels: np.ndarray, val_labels: np.ndarray, batch_size: int = 50):
     """Convert train and validation sets to torch.Tensors and load them to DataLoader.
 
     Parameters

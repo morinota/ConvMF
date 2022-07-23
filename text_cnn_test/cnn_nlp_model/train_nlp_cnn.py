@@ -1,5 +1,4 @@
-
-
+from typing import Tuple
 from torch import Tensor
 import torch
 import torch.nn as nn
@@ -26,8 +25,29 @@ def set_seed(seed_value=42):
 def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
           train_dataloader: DataLoader, val_dataloader: DataLoader = None,
           epochs: int = 10
-          ):
-    """Train the CNN model."""
+          ) -> nn.Module:
+    """Train the CNN_NLP model.
+
+    Parameters
+    ----------
+    model : nn.Module
+        CNN_NLPオブジェクト。
+    optimizer : optim.Adadelta
+        Optimizer
+    device : torch.device
+        'cuda' or 'cpu'
+    train_dataloader : DataLoader
+        学習用のDataLoader
+    val_dataloader : DataLoader, optional
+        検証用のDataLoader, by default None
+    epochs : int, optional
+        epoch数, by default 10
+
+    Returns
+    -------
+    学習を終えたCNN_NLPオブジェクト
+        nn.Module
+    """
 
     # Tracking best validation accuracy
     best_accuracy = 0
@@ -36,6 +56,7 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
     print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
     print("-"*60)
 
+    # エポック毎に繰り返し
     for epoch_i in range(epochs):
         # =======================================
         #               Training
@@ -50,39 +71,48 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
 
         # バッチ学習
         for step, batch in enumerate(train_dataloader):
+            # inputデータとoutputデータを分割
             b_input_ids, b_labels = tuple(t for t in batch)
 
             # ラベル側をキャストする(そのままだと何故かエラーが出るから)
             b_labels: Tensor = b_labels.type(torch.LongTensor)
-            # Load batch to GPU
+            # データをGPUにわたす。
             b_input_ids: Tensor = b_input_ids.to(device)
             b_labels: Tensor = b_labels.to(device)
 
             # Zero out any previously calculated gradients
-            model.zero_grad()  # 勾配の値を初期化(累積してく仕組みだから...)
+            # 1バッチ毎に勾配の値を初期化(累積してく仕組みだから...)
+            model.zero_grad()
 
             # Perform a forward pass. This will return logits.
-            logits = model(b_input_ids)
+            # モデルにinputデータを入力して、出力値を得る。
+            output_pred = model(b_input_ids)
             # Compute loss and accumulate the loss values
-            loss = loss_fn(input=logits, target=b_labels)
+            # 損失関数の値を計算
+            loss = loss_fn(input=output_pred, target=b_labels)
+            # 1 epoch全体の損失関数の値を評価する為に、1 batch毎の値を累積していく.
             total_loss += loss.item()
 
             # Update parameters(パラメータを更新)
-            loss.backward()
-            optimizer.step()
+            loss.backward()  # 誤差逆伝播で勾配を取得
+            optimizer.step()  # 勾配を使ってパラメータ更新
 
         # Calculate the average loss over the entire training data
+        # 1 epoch全体の損失関数の平均値を計算
         avg_train_loss = total_loss / len(train_dataloader)
 
         # =======================================
         #               Evaluation
         # =======================================
-        # 1 epochの学習が終わる毎にEvaluation
+        # 1 epochの学習が終わる毎に、検証用データを使って汎化性能評価。
         if val_dataloader is not None:
             # After the completion of each training epoch, measure the model's
             # performance on our validation set.
             val_loss, val_accuracy = evaluate(
-                model=model, val_dataloader=val_dataloader, device=device)
+                model=model,
+                val_dataloader=val_dataloader,
+                device=device
+            )
 
             # Track the best accuracy
             if val_accuracy > best_accuracy:
@@ -90,18 +120,37 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
 
             # Print performance over the entire training data
             time_elapsed = time.time() - t0_epoch
-            print(f"{epoch_i + 1:^7} | {avg_train_loss:^12.6f} | {val_loss:^10.6f} | {val_accuracy:^9.2f} | {time_elapsed:^9.2f}")
+            print(f"the validation result of epoch {epoch_i + 1:^7} is below.")
+            print('the values of loss function')
+            print(f'train(average):{avg_train_loss:.6f},valid:{val_loss:.6f}')
+            print(
+                f'accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}')
 
     print("\n")
     print(f"Training complete! Best accuracy: {best_accuracy:.2f}%.")
 
-    # 学習したモデルを返す
+    # 学習済みのモデルを返す
     return model
 
 
-def evaluate(model: nn.Module, val_dataloader: DataLoader, device: torch.device):
-    """After the completion of each training epoch, measure the model's
+def evaluate(model: nn.Module, val_dataloader: DataLoader, device: torch.device) -> Tuple[np.ndarray]:
+    """各epochの学習が完了した後、検証用データを使ってモデルの汎化性能を評価する。
+    After the completion of each training epoch, measure the model's
     performance on our validation set.
+
+    Parameters
+    ----------
+    model : nn.Module
+        CNN_NLPオブジェクト。
+    val_dataloader : DataLoader
+        検証用のDataLoader
+    device : torch.device
+        'cuda' or 'cpu'
+
+    Returns
+    -------
+    Tuple[np.ndarray]
+        検証用データセットに対する、モデルの損失関数とAccuracyの値。
     """
     # Put the model into the evaluation mode. The dropout layers are disabled
     # during the test time.
@@ -120,18 +169,21 @@ def evaluate(model: nn.Module, val_dataloader: DataLoader, device: torch.device)
         b_input_ids: Tensor = b_input_ids.to(device)
         b_labels: Tensor = b_labels.to(device)
 
-        # Compute logits
+        # モデルにinputデータを入力して、出力値を得る。
         with torch.no_grad():
-            logits = model(b_input_ids)
+            output_pred = model(b_input_ids)
 
         # Compute loss
-        loss: Tensor = loss_fn(logits, b_labels)
+        # 損失関数の値を計算
+        loss: Tensor = loss_fn(output_pred, b_labels)
+        # 得られたbacth毎の損失関数の値を保存
         val_loss.append(loss.item())
 
         # Get the predictions
-        preds = torch.argmax(logits, dim=1).flatten()
+        # 分類問題の予測結果を取得
+        preds = torch.argmax(output_pred, dim=1).flatten()
 
-        # Calculate the accuracy rate
+        # Calculate the accuracy rate(正解率)
         preds: Tensor
         b_labels: Tensor
         accuracy = (preds == b_labels).cpu().numpy().mean() * 100

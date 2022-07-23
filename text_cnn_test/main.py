@@ -10,7 +10,7 @@ from tokenizes import conduct_tokenize, encode
 from pretrained_vec import load_pretrained_vectors
 from model_cnn_nlp import initilize_model
 from train_nlp_cnn import train, set_seed
-from dataloader import data_loader
+from dataloader import create_data_loaders
 
 
 TEXT_FILE = r'..\data\descriptions.csv'
@@ -70,7 +70,7 @@ def main():
     )
 
     # Load data to Pytorch DataLoader
-    train_dataloader, val_dataloader = data_loader(
+    train_dataloader, val_dataloader = create_data_loaders(
         train_inputs=train_inputs,
         val_inputs=val_inputs,
         train_labels=train_labels,
@@ -101,20 +101,20 @@ def main():
     # CNN-static: fastText pretrained word vectors are used and freezed during training.
     # fastText 事前学習された単語ベクトルが使われ、学習中は凍結される。
     set_seed(42)
-    cnn_static, optimizer = initilize_model(
+    cnn_nlp, optimizer = initilize_model(
         pretrained_embedding=embeddings,
         freeze_embedding=True,
         learning_rate=0.25,
         dropout=0.5, device=device
     )
 
-    cnn_static = train(model=cnn_static,
-                       optimizer=optimizer,
-                       train_dataloader=train_dataloader,
-                       val_dataloader=val_dataloader,
-                       epochs=20,
-                       device=device
-                       )
+    cnn_nlp = train(model=cnn_nlp,
+                    optimizer=optimizer,
+                    train_dataloader=train_dataloader,
+                    val_dataloader=val_dataloader,
+                    epochs=20,
+                    device=device
+                    )
 
     # # CNN-non-static: fastText pretrained word vectors are fine-tuned during training.
     # # fastText 事前学習された単語ベクトルが使われ、学習中に微調整される

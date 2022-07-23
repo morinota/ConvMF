@@ -1,6 +1,6 @@
 title: 評価行列とアイテムの説明文書を活用した推薦システム「ConvMF」を何とか実装していきたい!③CNNパートの実装
 
-# 参考
+# 1. 参考
 
 - [元論文](https://dl.acm.org/doi/10.1145/2959100.2959165)
   - [figure and table](https://www.semanticscholar.org/paper/Convolutional-Matrix-Factorization-for-Document-Kim-Park/af9c4dda90e807246a2f6fa0a922bbf8029767cf)
@@ -13,7 +13,7 @@ title: 評価行列とアイテムの説明文書を活用した推薦システ�
 - [PyTorchを使ってCNNで文章分類を実装してみた](https://qiita.com/m__k/items/6c39cfe7dfa99102fa8e)
 - [A Complete Guide to CNN for Sentence Classification with PyTorch](https://chriskhanhtran.github.io/posts/cnn-sentence-classification/)
 
-# はじめに
+# 2. はじめに
 
 KaggleのPersonalized Recommendationコンペに参加して以降、推薦システムが自分の中で熱くなっております。以前、Implicit Feedbackに対するモデルベースの協調フィルタリング(Matrix Factorization)の論文を読んで実装してみて、今度は更に実用的(?)で発展的な手法を触ってみたいと思い、「Convolutional Matrix Factorization for Document Context-Aware Recommendation」を読みました。この論文では、Matrix Factorizationによるモデルベース協調フィルタリングに、CNNを用いてアイテムの説明文書の情報を組み合わせる ConvMF(Convolutional Matrix Factorization)を提案しています。
 
@@ -26,15 +26,15 @@ KaggleのPersonalized Recommendationコンペに参加して以降、推薦シ�
 - [評価行列とアイテムの説明文書を活用した推薦システム「ConvMF」を何とか実装していきたい!①MFパートの実装](https://qiita.com/morinota/items/d84269b7b4bf55d157d8)
 - [評価行列とアイテムの説明文書を活用した推薦システム「ConvMF」を何とか実装していきたい!②MFパートの実装](https://qiita.com/morinota/items/6bcad7dfe9f406364bfd)
 
-# 前回のリマインド
+# 3. 前回のリマインド
 
-## ConvMF（畳み込み行列分解）とは？
+## 3.1. ConvMF（畳み込み行列分解）とは？
 
 Convolutional Matrix Factorization(通称ConvMF)は、モデルベース協調フィルタリングにおいて**評価行列のスパース性の上昇問題やコールドスタート問題**に対応する為に提案された、Explicit FeedbackやImplicit Feedbackの評価情報に加えて**アイテムの説明文書(ex. ニュース記事の中身、動画のタイトル、etc.)の情報を考慮した**推薦手法の一つです。
 その為に、ConvMFではモデルベース協調フィルタリングであるPMF(Probabilistic Matrix Factorization)にCNN(convolutional neural network)を統合しています。
 その結果、ConvMFは最終的に協調情報と文脈情報の両方を効果的に利用することができ、評価データが極めて疎な場合でも、ConvMFは未知の評価を正確に予測することができる、らしいです...。
 
-## ConvMFの確率モデル
+## 3.2. ConvMFの確率モデル
 
 以下の図は、NLPに対するCNNモデルをPMF(確率的行列分解)モデルに統合した、ConvMFの確率モデルの概要を示したモノになります。
 
@@ -54,7 +54,7 @@ Convolutional Matrix Factorization(通称ConvMF)は、モデルベース協調�
 そして、その積（$U^T \cdot V$）が評価行列 $R$を再構成するような、ユーザとアイテムの潜在モデル（$U\in \mathbb{R}^{k\times N}$ と $V \in \mathbb{R}^{k\times M}$）を見つけることが目的になります。
 特にConvMFでは、アイテムjの説明文書ベクトル$X_j$を考慮して$V_j$をを推定する点が大きな特徴になります。
 
-## ConvMFにおけるパラメータ推定法
+## 3.3. ConvMFにおけるパラメータ推定法
 
 ConvMFでは、パラメータ($U, V, W$)を最適化する為に、MAP推定(maximum a posteriori estimation)を行います。
 
@@ -119,11 +119,11 @@ $$
 
 ここまでで、簡単なConvMFの理論の復習は完了です。
 
-# $s_j = CNN(W, X_j)$についてまとめる前に...NLPのCNNについて確認
+# 4. $s_j = CNN(W, X_j)$についてまとめる前に...NLPのCNNについて確認
 
 $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込みニューラルネットワークを理解していきます。
 
-## 畳み込みとは？
+## 4.1. 畳み込みとは？
 
 - 畳み込みについては、行列に適用されるスライド窓関数 (sliding window function) として考えるとわかりやすいらしい...。
   - (けんごのお屋敷 様のgifを貼り付けさせていただきました)
@@ -133,7 +133,7 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
   - ＝＞つまり、**「スライド窓関数 & 畳み込み対象の行列の、ウィンドウサイズと合致する一部分」のアダマール積の和が**、Convolved Featureの要素の一つになる。
 - この操作を、行列全体をカバーするように、スライド窓関数をスライドさせながら行い、全体の畳み込み特徴(Covolved Feature)を取得する。
 
-## 畳み込みニューラルネットワークとは？
+## 4.2. 畳み込みニューラルネットワークとは？
 
 - CNN は、ReLU や tanh のような非線形な活性化関数を通した、いくつかの畳み込みの層のこと
 - 伝統的な順伝搬型ニューラルネットワークでは、**それぞれの入力ニューロンは次の層のニューロンにそれぞれ接続**されており、これは**全結合層**や**アフィン層**とも呼ばれる。
@@ -147,7 +147,7 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
   - 更により深い層ではその形状を使ってより高レベルな特徴、つまり顔の形状等の特徴を検出するようになる。
   - そして最後の層は、高レベルな特徴を使った(=入力とした)分類器になる。
 
-## これをどうやってNLPへ適用するのか？
+## 4.3. これをどうやってNLPへ適用するのか？
 
 - 画像分類では入力は画像のピクセル行列になるが、**ほとんどの NLP タスクではピクセル行列の代わりに、行列で表現された文章または文書が入力**となる。
   - 行列の**各行は 1 つのトークンに対応**しており、一般的には単語がトークンになることが多いが、文字がトークンのケースもある。
@@ -176,7 +176,7 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
   - 一番最後の softmax 層では先程の特徴を入力として受け取り、文章を分類する。
   - ここでは二値分類を前提としているので、最終的には 2 つの出力がある。
 
-## CNN のハイパーパラメータ
+## 4.4. CNN のハイパーパラメータ
 
 - スライド窓関数のサイズ(畳み込み幅のサイズ)
 - wide convolution か narrow convolution か
@@ -184,7 +184,7 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
 - プーリング層の選択(メジャーなのがmax pooling?)
 - チャンネル数
 
-### 畳み込み幅のサイズ
+### 4.4.1. 畳み込み幅のサイズ
 
 - 最初に畳み込みの説明をした時、フィルタ(スライド窓、カーネル、特徴検出器)を適用する際の詳細について説明を飛ばしたものがある。
   - 行列の真ん中辺りに 3x3 のフィルタを適用するのは問題ないが、それでは**フチの辺りに適用する場合はどうなんだろうか**??
@@ -203,7 +203,7 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
   - 上記の場合、narrow convolution は出力されるサイズが $(7 - 5) + 1 = 3$ になり、wide convolutin は $(7 + 2 * 4 - 5) + 1 = 11$ になる。
   - 一般化すると、**wide convolutionの場合の出力サイズ(畳み込み層の出力=特徴マップの大きさ?)**は $n_{out}=(n_{in} + 2*n_{padding} - n_{filter}) + 1$
 
-### ストライド
+### 4.4.2. ストライド
 
 - フィルタを順に適用していく際に、**フィルタをどれくらいシフトするのか**という値。
   - これまでに示してきた例は全てストライド=1 で、フィルタは重複しながら連続的に適用されている。
@@ -213,7 +213,7 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
 - ![](https://tkengo.github.io/assets/img/understanding-convolutional-neural-networks-for-nlp/stride.png)
 - **普通、文書においてはストライドのサイズは 1**だが、ストライドのサイズを大きくすることで、例えばツリーのような 再帰型ニューラルネットワーク と似た挙動を示すモデルを作れるかもしれない...!
 
-### プーリング層
+### 4.4.3. プーリング層
 
 - 畳み込みニューラルネットワークの鍵は、畳み込み層の後に適用されるプーリング層
   - プーリング層は、入力をサブサンプリングする。
@@ -223,21 +223,21 @@ $s_j = CNN(W, X_j)$の実装の前に、自然言語処理における畳み込�
   - ![](https://tkengo.github.io/assets/img/understanding-convolutional-neural-networks-for-nlp/max-pooling.png)
   - (**NLP では一般的に出力全体にわたってプーリングを適用する**。つまり各フィルタ(=>特徴マップ)からは **1 つの数値**が出力されることになる。)
 
-### チャンネル数
+### 4.4.4. チャンネル数
 
 - チャンネルとは、**入力データを異なる視点から見たもの**と言える。
   - 画像認識での例を挙げると、普通は画像は RGB (red, green, blue) の 3 チャンネルを持っている。
   - 畳み込みはこれらのチャンネル全体に適用でき、その時のフィルタは各チャンネル毎に別々に用意してもいいし、同じものを使っても問題ない。
 - NLP では、**異なる単語埋め込み表現 (word2vec や GloVe など) でチャンネルを分けたり**、同じ文章を**異なる言語で表現**してみたり、また異なるフレーズで表現してみたり、という風にして**複数チャンネルを持たせる**ことができそう...!
 
-# NLPタスクにおけるCNNを実装してみる(CNNによるDocumentの２クラス分類)
+# 5. NLPタスクにおけるCNNを実装してみる(CNNによるDocumentの２クラス分類)
 
 さてここから、CNNによるDocumentの２クラス分類をPytorchで実装していきます。
 [A Complete Guide to CNN for Sentence Classification with PyTorch](https://chriskhanhtran.github.io/posts/cnn-sentence-classification/)を参考に（ほぼ写経でコメントアウトをはさみまくりながら）実装します。
 
 ConvMFのCNNパート$s_j = CNN(W, X_j)$に関しても、出力次元数と損失関数の形以外は、この実装と変わらないので、今回実装するスクリプトを調整すれば、すぐにできるはずです...!
 
-## データの準備
+## 5.1. データの準備
 
 今回は、パート1⃣で用意したデータセットの内、各映画の説明文`descriptions.csv`のみを使用します。
 また、文章をtokenizeする為に、fastTextをダウンロードしておきます。
@@ -296,7 +296,7 @@ def main():
 the num of texts data is 2243, and the num of labels is 2243.
 ```
 
-## tokenizeの処理
+## 5.2. tokenizeの処理
 
 続いて、tokenizeの処理を実装していきます。
 tokenizeとは、文章を何らかの単位に区切る事を意味します。
@@ -428,7 +428,7 @@ the shape of input_ids is (2243, 174)
 学習データに含まれるユニークな単語(token)数は15246個であり、一つの文章における最大長さ(最大token数)が174らしいです。
 そして、tokenize及びencodeの処理を経て、CNNに入力する前の学習データが2243(データ数) \* 174(token数)の行列として用意されました。
 
-## 学習済み単語埋め込みベクトルの読み込み
+## 5.3. 学習済み単語埋め込みベクトルの読み込み
 
 さて続いて、学習済みの単語埋め込み(Embedding)ベクトルのデータを、CNNの学習に使えるように読み込みます。
 ここで読み込んだデータは、CNN内のEmbedding layerにて、前述した文章学習データ(=2243(データ数) \* 174(token数)の行列)の各要素(=各単語の通し番号)を単語埋め込みベクトルに変換する際に使われます。
@@ -523,7 +523,7 @@ the shape of embedding_vectors is (15248, 300)
 学習データに含まれるユニークな単語(token)数=15246個の内、15090個が事前学習された単語埋め込みベクトルの中に見つかったようです。
 また、返り値`embeddings`の`shape`属性を確認したところ、単語埋め込みベクトルの次元数は300のようですね！
 
-## CNN_NLPクラスの実装
+## 5.4. CNN_NLPクラスの実装
 
 さてようやく、`CNN_NLP`クラスを実装していきます。
 以下が、`CNN_NLP`クラスの実装部分になります。
@@ -687,7 +687,11 @@ class CNN_NLP(nn.Module):
 
 `.forward()`では、`CNN_NLP`インスタンスが入力値(=tokenize & encodeされた文章データ)を受け取ってCNNの出力値を返す処理を実装しています。
 
-## 学習データとラベルのセットをDataLoaderに～
+## 5.5. 学習データとラベルのセットをDataLoaderに～
+
+ここまででモデルクラスの定義まで完了したので、モデルにデータを流し込む為のDatasetオブジェクト,DataLoaderオブジェクトを作成します。
+
+以下の`dataloader.py`で、`create_data_loaders()`関数を定義しています。`create_data_loaders()`関数は、学習用inputデータ、検証用inputデータ、学習用outputデータ、検証用outputデータをそれぞれ`np.ndarray`型で引数として渡して、返り値として学習用DataLoaderオブジェクトと検証用DataLoaderオブジェクトを出力します。
 
 ```python:dataloader.py
 import torch
@@ -696,7 +700,7 @@ from torch.utils.data import (
 import numpy as np
 
 
-def data_loader(train_inputs: np.ndarray, val_inputs: np.ndarray, train_labels: np.ndarray, val_labels: np.ndarray, batch_size: int = 50):
+def create_data_loaders(train_inputs: np.ndarray, val_inputs: np.ndarray, train_labels: np.ndarray, val_labels: np.ndarray, batch_size: int = 50):
     """Convert train and validation sets to torch.Tensors and load them to DataLoader.
 
     Parameters
@@ -724,21 +728,312 @@ def data_loader(train_inputs: np.ndarray, val_inputs: np.ndarray, train_labels: 
               [train_inputs, val_inputs, train_labels, val_labels])
 
     # Create DataLoader for training data
+    # DatasetオブジェクトのInitialize
     train_data = TensorDataset(train_inputs, train_labels)
     train_sampler = RandomSampler(train_data)
+    # DataLoaderオブジェクトのInitialize
     train_dataloader = DataLoader(
         train_data, sampler=train_sampler, batch_size=batch_size)
 
     # Create DataLoader for validation data
+    # DatasetオブジェクトのInitialize
     val_data = TensorDataset(val_inputs, val_labels)
     val_sampler = SequentialSampler(val_data)
+    # DataLoaderオブジェクトのInitialize
     val_dataloader = DataLoader(
         val_data, sampler=val_sampler, batch_size=batch_size)
 
     return train_dataloader, val_dataloader
 ```
 
-# 終わりに
+## 5.6. モデルの学習＆検証用の関数を作成
+
+最後の実装部分として、ここまでで用意したモデル、Optimizer、および2つ(学習用＋検証用)のDataLoaderを用いて、CNN_NLPの学習と検証の処理を実装します。
+
+以下の`train_nlp_cnn.py`内で、`train()`関数を定義しています。
+実装の詳細に関しては、執拗に記述されたコメントアウトや、docstringを読んでいただければおそらく理解できると思います！
+ざっくり関数内の処理の内容としては、`CNN_NLP`オブジェクト、Optimizer、`torch.device`('cpu' or 'cuda')、及びepoch数を指定して、返り値として学習によりパラメータ最適化された`CNN_NLP`オブジェクトを出力します。
+
+各epochの学習後に、検証用データを用いてモデルの汎化性能を評価しており、検証用データの予測精度の評価の処理は、`evaluate()`関数で定義して、`train()`関数内で呼び出しています。
+
+```python:train_nlp_cnn.py
+from typing import Tuple
+from torch import Tensor
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+import torch.optim as optim
+import random
+import time
+from torch.utils.data import (TensorDataset, DataLoader, RandomSampler,
+                              SequentialSampler)
+
+# Specify loss function
+loss_fn = nn.CrossEntropyLoss()
+
+
+def set_seed(seed_value=42):
+    """Set seed for reproducibility."""
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    torch.cuda.manual_seed_all(seed_value)
+
+
+def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
+          train_dataloader: DataLoader, val_dataloader: DataLoader = None,
+          epochs: int = 10
+          ) -> nn.Module:
+    """Train the CNN_NLP model.
+
+    Parameters
+    ----------
+    model : nn.Module
+        CNN_NLPオブジェクト。
+    optimizer : optim.Adadelta
+        Optimizer
+    device : torch.device
+        'cuda' or 'cpu'
+    train_dataloader : DataLoader
+        学習用のDataLoader
+    val_dataloader : DataLoader, optional
+        検証用のDataLoader, by default None
+    epochs : int, optional
+        epoch数, by default 10
+
+    Returns
+    -------
+    学習を終えたCNN_NLPオブジェクト
+        nn.Module
+    """
+
+    # Tracking best validation accuracy
+    best_accuracy = 0
+
+    print("Start training...\n")
+    print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
+    print("-"*60)
+
+    # エポック毎に繰り返し
+    for epoch_i in range(epochs):
+        # =======================================
+        #               Training
+        # =======================================
+
+        # Tracking time and loss
+        t0_epoch = time.time()
+        total_loss = 0
+
+        # Put the model into the training mode
+        model.train()
+
+        # バッチ学習
+        for step, batch in enumerate(train_dataloader):
+            # inputデータとoutputデータを分割
+            b_input_ids, b_labels = tuple(t for t in batch)
+
+            # ラベル側をキャストする(そのままだと何故かエラーが出るから)
+            b_labels: Tensor = b_labels.type(torch.LongTensor)
+            # データをGPUにわたす。
+            b_input_ids: Tensor = b_input_ids.to(device)
+            b_labels: Tensor = b_labels.to(device)
+
+            # Zero out any previously calculated gradients
+            # 1バッチ毎に勾配の値を初期化(累積してく仕組みだから...)
+            model.zero_grad()
+
+            # Perform a forward pass. This will return logits.
+            # モデルにinputデータを入力して、出力値を得る。
+            output_pred = model(b_input_ids)
+            # Compute loss and accumulate the loss values
+            # 損失関数の値を計算
+            loss = loss_fn(input=output_pred, target=b_labels)
+            # 1 epoch全体の損失関数の値を評価する為に、1 batch毎の値を累積していく.
+            total_loss += loss.item()
+
+            # Update parameters(パラメータを更新)
+            loss.backward()  # 誤差逆伝播で勾配を取得
+            optimizer.step()  # 勾配を使ってパラメータ更新
+
+        # Calculate the average loss over the entire training data
+        # 1 epoch全体の損失関数の平均値を計算
+        avg_train_loss = total_loss / len(train_dataloader)
+
+        # =======================================
+        #               Evaluation
+        # =======================================
+        # 1 epochの学習が終わる毎に、検証用データを使って汎化性能評価。
+        if val_dataloader is not None:
+            # After the completion of each training epoch, measure the model's
+            # performance on our validation set.
+            val_loss, val_accuracy = evaluate(
+                model=model,
+                val_dataloader=val_dataloader,
+                device=device
+            )
+
+            # Track the best accuracy
+            if val_accuracy > best_accuracy:
+                best_accuracy = val_accuracy
+
+            # Print performance over the entire training data
+            time_elapsed = time.time() - t0_epoch
+            print(f"the validation result of epoch {epoch_i + 1:^7} is below.")
+            print('the values of loss function')
+            print(f'train(average):{avg_train_loss:.6f},valid:{val_loss:.6f}')
+            print(
+                f'accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}')
+
+    print("\n")
+    print(f"Training complete! Best accuracy: {best_accuracy:.2f}%.")
+
+    # 学習済みのモデルを返す
+    return model
+
+
+def evaluate(model: nn.Module, val_dataloader: DataLoader, device: torch.device) -> Tuple[np.ndarray]:
+    """各epochの学習が完了した後、検証用データを使ってモデルの汎化性能を評価する。
+    After the completion of each training epoch, measure the model's
+    performance on our validation set.
+
+    Parameters
+    ----------
+    model : nn.Module
+        CNN_NLPオブジェクト。
+    val_dataloader : DataLoader
+        検証用のDataLoader
+    device : torch.device
+        'cuda' or 'cpu'
+
+    Returns
+    -------
+    Tuple[np.ndarray]
+        検証用データセットに対する、モデルの損失関数とAccuracyの値。
+    """
+    # Put the model into the evaluation mode. The dropout layers are disabled
+    # during the test time.
+    model.eval()
+
+    # Tracking variables
+    val_accuracy = []
+    val_loss = []
+
+    # For each batch in our validation set...
+    for batch in val_dataloader:
+        b_input_ids, b_labels = tuple(t for t in batch)
+        # ラベル側をキャストする(そのままだと何故かエラーが出るから)
+        b_labels: Tensor = b_labels.type(torch.LongTensor)
+        # Load batch to GPU
+        b_input_ids: Tensor = b_input_ids.to(device)
+        b_labels: Tensor = b_labels.to(device)
+
+        # モデルにinputデータを入力して、出力値を得る。
+        with torch.no_grad():
+            output_pred = model(b_input_ids)
+
+        # Compute loss
+        # 損失関数の値を計算
+        loss: Tensor = loss_fn(output_pred, b_labels)
+        # 得られたbacth毎の損失関数の値を保存
+        val_loss.append(loss.item())
+
+        # Get the predictions
+        # 分類問題の予測結果を取得
+        preds = torch.argmax(output_pred, dim=1).flatten()
+
+        # Calculate the accuracy rate(正解率)
+        preds: Tensor
+        b_labels: Tensor
+        accuracy = (preds == b_labels).cpu().numpy().mean() * 100
+        val_accuracy.append(accuracy)
+
+    # Compute the average accuracy and loss over the validation set.
+    val_loss = np.mean(val_loss)
+    val_accuracy = np.mean(val_accuracy)
+
+    return val_loss, val_accuracy
+```
+
+## 最後に実行チェック！
+
+上で定義した`train()`関数を用いて、`main.py`内で、実際にCNNによる文章データの２クラス分類を実行してみます。
+
+```python:main.py
+# 略(モジュールをimport)
+
+def main():
+    # 略(文章データをload、適当にlabel作成、tokenize&encode、学習済み埋め込みベクトルをload)
+
+    # hold-out法によるtrain test split
+    train_inputs, val_inputs, train_labels, val_labels = train_test_split(
+        input_ids, labels, test_size=0.1, random_state=42
+    )
+
+    # DataLoaderオブジェクトを生成。
+    train_dataloader, val_dataloader = create_data_loaders(
+        train_inputs=train_inputs,
+        val_inputs=val_inputs,
+        train_labels=train_labels,
+        val_labels=val_labels,
+        batch_size=50
+    )
+
+    # check the device ('cuda' or 'cpu')
+    device = torch.device(
+        'cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+    # 乱数シードの固定
+    set_seed(42)
+
+    # CNN_NLPモデルのInitialize
+    cnn_nlp, optimizer = initilize_model(
+        pretrained_embedding=embeddings,
+        freeze_embedding=True,
+        learning_rate=0.25,
+        dropout=0.5, device=device
+    )
+
+    cnn_nlp = train(model=cnn_nlp,
+                    optimizer=optimizer,
+                    train_dataloader=train_dataloader,
+                    val_dataloader=val_dataloader,
+                    epochs=20,
+                    device=device
+                    )
+
+    # モデルの学習
+    cnn_static = train(model=cnn_static,
+                       optimizer=optimizer,
+                       train_dataloader=train_dataloader,
+                       val_dataloader=val_dataloader,
+                       epochs=20,
+                       device=device
+                       )
+if __name__ == '__main__':
+    os.chdir('text_cnn_test')
+    main()
+```
+
+最終的なディレクトリ構成は、以下のようになっています。
+```
+text_cnn_test
+│  main.py
+│
+├─cnn_nlp_model
+│      model_cnn_nlp.py
+│      predict.py
+│      train_nlp_cnn.py
+│
+├─utils
+│      dataloader.py
+│      pretrained_vec.py
+│      tokenizes.py
+│
+└─__pycache__
+```
+
+# 6. 終わりに
 
 今回の記事では「Convolutional Matrix Factorization for Document Context-Aware Recommendation」の理解と実装のパート3として、ConvMFのCNN部分の実装をまとめました。
 
