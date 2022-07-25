@@ -812,7 +812,6 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
     best_accuracy = 0
 
     print("Start training...\n")
-    print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
     print("-"*60)
 
     # エポック毎に繰り返し
@@ -880,10 +879,12 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
             # Print performance over the entire training data
             time_elapsed = time.time() - t0_epoch
             print(f"the validation result of epoch {epoch_i + 1:^7} is below.")
-            print('the values of loss function')
-            print(f'train(average):{avg_train_loss:.6f},valid:{val_loss:.6f}')
+            print(
+                f'the values of loss function : train(average)={avg_train_loss:.6f}, valid={val_loss:.6f}')
             print(
                 f'accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}')
+
+        print('-'*20)
 
     print("\n")
     print(f"Training complete! Best accuracy: {best_accuracy:.2f}%.")
@@ -1015,11 +1016,114 @@ if __name__ == '__main__':
     main()
 ```
 
-実行結果は以下のようになりました。今回は正解ラベルを適当に付与していますし、精度に関してはなんとも評価しようがありませんが。まあ今回の目的はCNN_NLPの練習なので、エラーなしで回ったからヨシ！です：）
+実行結果は以下のようになりました。今回は正解ラベルを適当に付与していますし、精度に関してはなんとも評価しようがありませんが、Accuracyが常に100%なのは計算式がおかしいのでしょうか...?。まあでも今回の目的はCNN_NLPの練習なので、エラーなしで回ったからヨシ！です：）
+```
+                                        title                                        description  id   
+0    pirates of the caribbean: at world's end  Captain Barbossa, long believed to be dead, ha...   0   
+1                                spider-man 3  The seemingly invincible Spider-Man goes up ag...   1   
+2                            superman returns  Superman returns to discover his 5-year absenc...   2   
+3                           quantum of solace  Quantum of Solace continues the adventures of ...   3   
+4  pirates of the caribbean: dead man's chest  Captain Jack Sparrow works his way out of a bl...   4   
+the num of texts data is 2243, and the num of labels is 2243.
+Tokenizing...
+
+the num of vocabrary is 15246
+max len of texts is 174
+the shape of input_ids is (2243, 174)
+Loading pretrained vectors...
+1999995it [00:30, 65626.75it/s]
+There are 15090 / 15248 pretrained vector found.
+the shape of embedding_vectors is (15248, 300)
+Start training...
+
+------------------------------------------------------------
+the validation result of epoch    1    is below.
+the values of loss function : train(average)=0.094425, valid=0.014005
+accuracy of valid data: 100.00, time: 3.09
+--------------------
+the validation result of epoch    2    is below.
+the values of loss function : train(average)=0.011253, valid=0.004894
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch    3    is below.
+the values of loss function : train(average)=0.005985, valid=0.002118
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch    4    is below.
+the values of loss function : train(average)=0.004276, valid=0.001074
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch    5    is below.
+the values of loss function : train(average)=0.003488, valid=0.000642
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch    6    is below.
+the values of loss function : train(average)=0.003932, valid=0.000465
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch    7    is below.
+the values of loss function : train(average)=0.003882, valid=0.000371
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch    8    is below.
+the values of loss function : train(average)=0.003062, valid=0.000304
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch    9    is below.
+the values of loss function : train(average)=0.003373, valid=0.000266
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch   10    is below.
+the values of loss function : train(average)=0.003520, valid=0.000238
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch   11    is below.
+the values of loss function : train(average)=0.003792, valid=0.000230
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch   12    is below.
+the values of loss function : train(average)=0.003693, valid=0.000220
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch   13    is below.
+the values of loss function : train(average)=0.003125, valid=0.000210
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch   14    is below.
+the values of loss function : train(average)=0.002920, valid=0.000198
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch   15    is below.
+the values of loss function : train(average)=0.003283, valid=0.000194
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch   16    is below.
+the values of loss function : train(average)=0.003044, valid=0.000188
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch   17    is below.
+the values of loss function : train(average)=0.002642, valid=0.000177
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch   18    is below.
+the values of loss function : train(average)=0.002978, valid=0.000172
+accuracy of valid data: 100.00, time: 0.21
+--------------------
+the validation result of epoch   19    is below.
+the values of loss function : train(average)=0.002930, valid=0.000169
+accuracy of valid data: 100.00, time: 0.20
+--------------------
+the validation result of epoch   20    is below.
+the values of loss function : train(average)=0.002845, valid=0.000167
+accuracy of valid data: 100.00, time: 0.21
+--------------------
 
 
+Training complete! Best accuracy: 100.00%.
+```
 
-最終的なディレクトリ構成は、以下のようになっています。
+
+また、最終的なディレクトリ構成は、以下のようになっています。
 
 ```
 text_cnn_test
@@ -1042,7 +1146,8 @@ text_cnn_test
 
 今回の記事では「Convolutional Matrix Factorization for Document Context-Aware Recommendation」の理解と実装のパート3として、ConvMFのCNN部分の実装をまとめました。
 
-NLPにおけるCNNを実装するだけで長くなってしまったので、次回は今回実装したCNNをConvMF用にアレンジしていきます。
+NLPにおけるCNNを実装するだけで長くなってしまったので、次回は今回実装した`CNN_NLP`クラスを**ConvMF用にアレンジ**していきます。
+おそらく**アレンジすべき箇所は、主にCNNのアーキテクチャと損失関数**でしょうか：）
 
 そしてこの一連のConvMFの実装経験を通じて、"Ratingデータ"＋"アイテムの説明文書"を活用した推薦システムについて実現イメージを得ると共に、"非常に疎な評価行列問題"や"コールドスタート問題"に対応し得る"頑健"な推薦システムについて理解を深めていきたいです。
 
