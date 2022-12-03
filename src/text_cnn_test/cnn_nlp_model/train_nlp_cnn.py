@@ -1,20 +1,20 @@
+import random
+import time
 from typing import Tuple
-from torch import Tensor
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 import torch.optim as optim
-import random
-import time
-from torch.utils.data import (TensorDataset, DataLoader, RandomSampler,
-                              SequentialSampler)
+from torch import Tensor
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 
 # Specify loss function
 loss_fn = nn.CrossEntropyLoss()
 
 
-def set_seed(seed_value=42):
+def set_seed(seed_value: int = 42) -> None:
     """Set seed for reproducibility."""
     random.seed(seed_value)
     np.random.seed(seed_value)
@@ -22,10 +22,14 @@ def set_seed(seed_value=42):
     torch.cuda.manual_seed_all(seed_value)
 
 
-def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
-          train_dataloader: DataLoader, val_dataloader: DataLoader = None,
-          epochs: int = 10
-          ) -> nn.Module:
+def train(
+    model: nn.Module,
+    optimizer: optim.Adadelta,
+    device: torch.device,
+    train_dataloader: DataLoader,
+    val_dataloader: DataLoader = None,
+    epochs: int = 10,
+) -> nn.Module:
     """Train the CNN_NLP model.
 
     Parameters
@@ -53,7 +57,7 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
     best_accuracy = 0
 
     print("Start training...\n")
-    print("-"*60)
+    print("-" * 60)
 
     # エポック毎に繰り返し
     for epoch_i in range(epochs):
@@ -107,11 +111,7 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
         if val_dataloader is not None:
             # After the completion of each training epoch, measure the model's
             # performance on our validation set.
-            val_loss, val_accuracy = evaluate(
-                model=model,
-                val_dataloader=val_dataloader,
-                device=device
-            )
+            val_loss, val_accuracy = evaluate(model=model, val_dataloader=val_dataloader, device=device)
 
             # Track the best accuracy
             if val_accuracy > best_accuracy:
@@ -120,12 +120,10 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
             # Print performance over the entire training data
             time_elapsed = time.time() - t0_epoch
             print(f"the validation result of epoch {epoch_i + 1:^7} is below.")
-            print(
-                f'the values of loss function : train(average)={avg_train_loss:.6f}, valid={val_loss:.6f}')
-            print(
-                f'accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}')
+            print(f"the values of loss function : train(average)={avg_train_loss:.6f}, valid={val_loss:.6f}")
+            print(f"accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}")
 
-        print('-'*20)
+        print("-" * 20)
 
     print("\n")
     print(f"Training complete! Best accuracy: {best_accuracy:.2f}%.")

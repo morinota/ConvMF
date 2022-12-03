@@ -1,0 +1,21 @@
+{
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.tabSize": 4,
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": true,
+
+    "python.analysis.extraPaths" : [
+        "src"
+    ],
+    "python.analysis.typeCheckingMode": "basic",
+    "python.autoComplete.extraPaths" : [
+        "src"
+    ],
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    }
+}
