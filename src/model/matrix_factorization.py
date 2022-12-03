@@ -1,11 +1,12 @@
 import os
-from dataclasses.rating_data import RatingData
 from typing import Dict, Hashable, List, NamedTuple, Optional
 
 import numpy as np
 import pandas as pd
 from pydantic.dataclasses import dataclass
 from tqdm import tqdm
+
+from src.dataclasses.rating_data import RatingData
 
 
 @dataclass
