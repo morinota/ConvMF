@@ -6,23 +6,20 @@ import pandas as pd
 from pydantic.dataclasses import dataclass
 from tqdm import tqdm
 
-from src.dataclasses.rating_data import RatingData
-
-
-@dataclass
-class IndexRatingSet:
-    """あるユーザi (or アイテムj)における、任意のアイテムj(or ユーザi)の評価値のリスト"""
-
-    indices: List[int]  # user_id（もしくはitem_id）のList
-    ratings: List[float]  # 対応するratingsのList
+from src.dataclasses.index_rating_mappings import IndexRatingSet
+from src.dataclasses.rating_data import RatingLog
 
 
 class MatrixFactrization(object):
     def __init__(
-        self, ratings: List[RatingData], n_factor=300, user_lambda=0.001, item_lambda=0.001, n_item: int = None
+        self,
+        ratings: List[RatingLog],
+        n_factor: int = 300,
+        user_lambda: float = 0.001,
+        item_lambda: float = 0.001,
+        n_item: Optional[int] = None,
     ):
         """コンストラクタ
-
         Parameters
         ----------
         ratings : List[RatingData]
@@ -38,6 +35,7 @@ class MatrixFactrization(object):
         """
 
         data = pd.DataFrame(ratings)
+
         # Rating matrixの形状(行数＝user数、列数=item数)を指定。
         self.n_user = max(data["user"].unique()) + 1  # 行数=0始まりのuser_id+1
         self.n_item = n_item if n_item is not None else max(data["item"].unique()) + 1  # 列数=0始まりのitem_id+1
@@ -51,37 +49,35 @@ class MatrixFactrization(object):
         self.item_factor = np.random.normal(size=(self.n_factor, self.n_item)).astype(np.float32)
 
         # パラメータ更新時にアクセスしやすいように、Ratingsを整理しておく
-        self.user_item_list: Dict[int, IndexRatingSet]
-        self.item_user_list: Dict[int, IndexRatingSet]
-        # 各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratings
-        self.user_item_list = {
+        # 各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratingsを取得
+        self.user_item_list: Dict[int, IndexRatingSet] = {
             user_i: v
             for user_i, v in data.groupby("user")
             .apply(lambda x: IndexRatingSet(indices=x["item"].values, ratings=x["rating"].values))
             .items()
         }
         # 各itemに対する、Rating Matrixにおける非ゼロ要素のusersとratings
-        self.item_user_list = {
+        self.item_user_list: Dict[int, IndexRatingSet] = {
             item_i: v
             for item_i, v in data.groupby("item")
             .apply(lambda x: IndexRatingSet(indices=x["user"].values, ratings=x["rating"].values))
             .items()
         }
 
-    def fit(self, n_trial=5, additional: Optional[List[np.ndarray]] = None):
+    def fit(self, n_trial: int = 5, document_vectors: Optional[List[np.ndarray]] = None) -> None:
         """U:user latent matrix とV:item latent matrixを推定するメソッド。
         Args:
             n_trial (int, optional):
             エポック数。何回ALSするか. Defaults to 5.
-            additional (Optional[List[np.ndarray]], optional):
-            document factor vector =s_j = Conv(W, X_j)のリスト. Defaults to None.
+            document_vectors (Optional[List[np.ndarray]], None):
+            document factor vector =s_j = Conv(W, X_j)のリスト.
         """
         # ALSをn_trial周していく！
         # (今回はPMFだから実際には、AMAP? = Alternating Maximum a Posteriori)
         for _ in tqdm(range(n_trial)):
             # 交互にパラメータ更新
-            self.update_user_factors()
-            self.update_item_factors(additional)
+            self._update_user_factors()
+            self._update_item_factors(document_vectors)
 
     def predict(self, users: List[int], items: List[int]) -> np.ndarray:
         """user factor vectorとitem factor vectorの内積をとって、r\hatを推定
@@ -98,7 +94,7 @@ class MatrixFactrization(object):
         # ndarrayで返す。
         return np.array(ratings_hat)
 
-    def update_user_factors(self):
+    def _update_user_factors(self):
         """user latent vector (user latent matrixの列ベクトル)を更新する処理"""
         # 各user_id毎(=>各user latent vector毎)に繰り返し処理
         for i in self.user_item_list.keys():
@@ -118,7 +114,7 @@ class MatrixFactrization(object):
             # 逆行列と何かの積を取る場合，
             # numpy.linalg.inv()じゃなくてnumpy.linalg.solve()の方が速いらしい...！
 
-    def update_item_factors(self, additional: Optional[List[np.ndarray]] = None):
+    def _update_item_factors(self, additional: Optional[List[np.ndarray]] = None):
         """item latent vector (item latent matrixの列ベクトル)を更新する処理
 
         Parameters
