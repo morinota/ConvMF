@@ -150,6 +150,7 @@ class ItemDescrptionPreparer:
         """padding: 全てのitem descriptionのindicesの長さをmax_text_lengthに揃える
         paddingした要素のidxはidx_for_unknown_wordで穴埋めする.
         """
+        self.padding_word_idx = idx_for_unknown_token
         token_idx_array_in_texts_slised = [
             token_idx_array[:max_text_length] for token_idx_array in token_idx_array_in_texts
         ]
@@ -174,7 +175,9 @@ class ItemDescrptionPreparer:
 
     @property
     def word2idx_mapping(self) -> Dict[str, int]:
-        return {word: idx for idx, word in self.dictionary.items()}
+        word2idx_mapping = {word: idx for idx, word in self.dictionary.items()}
+        word2idx_mapping["<pad>"] = self.padding_word_idx # dictionaryにはpaddingが未登録の為追加
+        return word2idx_mapping
 
     @property
     def idx2word_mapping(self) -> Dict[int, str]:
