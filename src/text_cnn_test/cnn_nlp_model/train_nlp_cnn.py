@@ -13,7 +13,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 
 # Specify loss function
-loss_fn = nn.CrossEntropyLoss()
+loss_fn = nn.MSELoss()
 
 
 def set_seed(seed_value: int = 42) -> None:
@@ -77,15 +77,15 @@ def train(
         model.train()
 
         # バッチ学習
-        for step, batch in enumerate(train_dataloader):
+        for step_idx, batch_dataset in enumerate(train_dataloader):
             # inputデータとoutputデータを分割
-            batch_input_ids, batch_labels = tuple(tensors for tensors in batch)
+            batch_input_ids, batch_outputs = tuple(tensors for tensors in batch_dataset)
 
             # ラベル側をキャストする(そのままだと何故かエラーが出るから)
-            batch_labels: Tensor = batch_labels.type(torch.LongTensor)
+            # batch_outputs: Tensor = batch_outputs.type(torch.LongTensor)
             # データをGPUにわたす。
             batch_input_ids: Tensor = batch_input_ids.to(device)
-            batch_labels: Tensor = batch_labels.to(device)
+            batch_outputs: Tensor = batch_outputs.to(device)
 
             # Zero out any previously calculated gradients
             # 1バッチ毎に勾配の値を初期化(累積してく仕組みだから...)
@@ -96,7 +96,12 @@ def train(
             output_pred = model(batch_input_ids)
             # Compute loss and accumulate the loss values
             # 損失関数の値を計算
-            loss = loss_fn(input=output_pred, target=batch_labels)
+            loss = loss_fn(output_pred, batch_outputs)
+            print(type(loss))
+            print(type(output_pred))
+            print(type(batch_outputs))
+            print(output_pred)
+            print(batch_outputs)
             # 1 epoch全体の損失関数の値を評価する為に、1 batch毎の値を累積していく.
             total_loss += loss.item()
 

@@ -66,11 +66,15 @@ def main():
     # check the device (GPU|CPU)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    mf_obj = MatrixFactrization(rating_logs=rating_logs, n_factor=10)
+    mf_obj = MatrixFactrization(
+        rating_logs=rating_logs,
+        n_factor=10,
+        n_item=len(item_descriptions),  # 登録されているアイテム数を追加しておく(rating_logsに含まれてない可能性がある)
+    )
 
     # train test split
     train_inputs, val_inputs, train_labels, val_labels = train_test_split(
-        token_indices_array, mf_obj.item_factor, test_size=0.1, random_state=42
+        token_indices_array, mf_obj.item_latent_vectors, test_size=0.1, random_state=42
     )
 
     # Load data to Pytorch DataLoader
@@ -81,6 +85,11 @@ def main():
         val_labels=val_labels,
         batch_size=50,
     )
+
+    # 一つの値を取り出す
+    data = next(iter(train_dataloader))
+    # 結果の確認
+    print(data)  # tensor([1, 2])
 
     cnn_nlp, optimizer = initilize_cnn_nlp_model(
         pretrained_embedding=embedding_vectors.to_tensor(),

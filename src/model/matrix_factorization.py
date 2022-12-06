@@ -61,15 +61,14 @@ class MatrixFactrization:
         """Rating matrixの形状(行数＝user数、列数=item数)を設定する"""
         n_user = len(rating_logs_df["user_id"].unique())
         # TODO: ↓n_item = 0始まりのitem_idの最後尾 + 1() これは現実的なんだろうか...?
-        n_item = (
-            n_item
-            if n_item is not None
-            else max(rating_logs_df["item_id"].unique()) + 1
-        )
+        if n_item is None:
+            n_item = max(rating_logs_df["item_id"].unique()) + 1
         return n_user, n_item
 
     def _initialize_user_and_item_factors(self) -> Tuple[np.ndarray, np.ndarray]:
-        """ "user_factor(user latent matrix)とitem_factor(item latent matrix)をInitialize"""
+        """ "user_factor(user latent matrix)とitem_factor(item latent matrix)をInitialize
+        行数 = n_factor, 各列がユーザベクトルとアイテムベクトル
+        """
         user_factor_initialized = np.random.normal(
             size=(self.n_factor, self.n_user)
         ).astype(np.float32)
@@ -199,20 +198,22 @@ class MatrixFactrization:
             self.item_factor[:, item_idx] = np.linalg.solve(a, b)
 
     @property
-    def item_latent_vectors(self) -> List[np.ndarray]:
-        item_vector_list = self.item_factor.tolist()
-        item_vector_ndarrays = [
-            np.array(item_vector) for item_vector in item_vector_list
-        ]
-        return item_vector_ndarrays
+    def item_latent_vectors(self) -> np.ndarray:
+        """各行がlatent vectorになるように変換して返す"""
+        # item_vector_ndarrays = [
+        #     np.array(item_vector) for item_vector in item_vector_list
+        # ]
+        # return item_vector_ndarrays
+        return self.item_factor.transpose()
 
     @property
-    def user_latent_vectors(self) -> List[np.ndarray]:
-        user_vector_list = self.user_factor.tolist()
-        user_vector_ndarrays = [
-            np.array(user_vector) for user_vector in user_vector_list
-        ]
-        return user_vector_ndarrays
+    def user_latent_vectors(self) -> np.ndarray:
+        """各行がlatent vectorになるように変換して返す"""
+        # user_vector_ndarrays = [
+        #     np.array(user_vector) for user_vector in user_vector_list
+        # ]
+        # return user_vector_ndarrays
+        user_vector_list = self.user_factor.transpose()
 
 
 if __name__ == "__main__":
