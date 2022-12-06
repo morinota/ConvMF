@@ -1,11 +1,12 @@
-from typing import List, Tuple
-from torch import Tensor
-import torch.optim as optim
 from turtle import forward
+from typing import List, Optional, Tuple
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+import torch.optim as optim
+from torch import Tensor
 
 
 class CNN_NLP(nn.Module):
@@ -14,15 +15,17 @@ class CNN_NLP(nn.Module):
     An 1D Convulational Neural Network for Sentence Classification.
     """
 
-    def __init__(self, pretrained_embedding: torch.Tensor = None,
-                 freeze_embedding=False,
-                 vocab_size=None,
-                 embed_dim=300,
-                 filter_sizes=[3, 4, 5],
-                 num_filters=[100, 100, 100],
-                 dim_output: int = 2,
-                 dropout: float = 0.5
-                 ) -> None:
+    def __init__(
+        self,
+        pretrained_embedding: Optional[torch.Tensor] = None,
+        freeze_embedding: bool = False,
+        vocab_size: Optional[int] = None,
+        embed_dim=300,
+        filter_sizes=[3, 4, 5],
+        num_filters=[100, 100, 100],
+        dim_output: int = 2,
+        dropout: float = 0.5,
+    ) -> None:
         """
         CNN_NLPクラスのコンストラクタ
         The constructor for CNN_NLP class.
@@ -35,13 +38,13 @@ class CNN_NLP(nn.Module):
                 vectors. 学習済みの単語埋め込みベクトルをfine-tuningするか否か。
                 Default: False
             vocab_size (int): Need to be specified when not pretrained word
-                embeddings are not used. 学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
+                embeddings are not used.
                 Default: None
             embed_dim (int): Dimension of word vectors. Need to be specified
-                when pretrained word embeddings are not used. 
+                when pretrained word embeddings are not used.
                 学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
                 Default: 300
-            filter_sizes (List[int]): List of filter sizes. 
+            filter_sizes (List[int]): List of filter sizes.
             畳み込み層のスライド窓関数のwindow sizeを指定する。
             Default: [3, 4, 5]
             num_filters (List[int]): List of number of filters, has the same
@@ -59,10 +62,7 @@ class CNN_NLP(nn.Module):
         # 学習済みの単語埋め込みベクトルの配列が渡されていれば...
         if pretrained_embedding is not None:
             self.vocab_size, self.embed_dim = pretrained_embedding.shape
-            self.embedding = nn.Embedding.from_pretrained(
-                pretrained_embedding,
-                freeze=freeze_embedding
-            )
+            self.embedding = nn.Embedding.from_pretrained(pretrained_embedding, freeze=freeze_embedding)
         # 渡されていなければ...
         else:
             self.embed_dim = embed_dim
@@ -72,7 +72,7 @@ class CNN_NLP(nn.Module):
                 embedding_dim=self.embed_dim,  # 埋め込みベクトルの次元数
                 padding_idx=0,  # 文章データ(系列データ)の長さの統一：ゼロパディング
                 # 単語埋め込みベクトルのnorm(長さ?)の最大値の指定。これを超える単語ベクトルはnorm=max_normとなるように正規化される?
-                max_norm=5.0
+                max_norm=5.0,
             )
 
         # Conv Networkの定義
@@ -88,7 +88,7 @@ class CNN_NLP(nn.Module):
                 # window size(resign size)(Conv1dなので高さのみ指定)
                 kernel_size=filter_sizes[i],
                 padding=0,  # ゼロパディング
-                stride=1  # ストライド
+                stride=1,  # ストライド
             )
             # 保存
             modules.append(conv_layer)
@@ -97,10 +97,7 @@ class CNN_NLP(nn.Module):
 
         # 全結合層(中間層なし)とDropoutの定義
         # Fully-connected layer and Dropout
-        self.fc = nn.Linear(
-            in_features=np.sum(num_filters),
-            out_features=dim_output
-        )
+        self.fc = nn.Linear(in_features=np.sum(num_filters), out_features=dim_output)
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, input_ids):
@@ -115,32 +112,28 @@ class CNN_NLP(nn.Module):
                 dim_output)
         """
         # Get embeddings from `input_ids`. Output shape: (b, max_len, embed_dim)
-        # Embedding層にtokenizedされたテキスト(符号化済み)を渡して、文書行列を取得する
+        #
         x_embed: Tensor = self.embedding(input_ids).float()
 
         # Permute `x_embed` to match input shape requirement of `nn.Conv1d`.
-        # Tensorの軸の順番を入れ替える:(batch_size, max_len, embed_dim)=>(batch_size, embed_dim, max_len)
+        #
         x_reshaped = x_embed.permute(0, 2, 1)
         # Output shape:(batch_size, embed_dim, max_len)
 
         # Apply CNN and ReLU.
         # Output shape: (batch_size, num_filters[i], L_out(convolutionの出力数))
-        x_conv_list: List[Tensor] = [F.relu(conv1d(x_reshaped))
-                                     for conv1d in self.conv1d_list]
+        x_conv_list: List[Tensor] = [F.relu(conv1d(x_reshaped)) for conv1d in self.conv1d_list]
 
         # Max pooling.
         # 各convolutionの出力値にmax poolingを適用して、一つの代表値に。
         # Output shape: (batch_size, num_filters[i], 1)
         # kernel_size引数はx_convの次元数に！=>poolingの出力は1次元!
-        x_pool_list: List[Tensor] = [
-            F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list
-        ]
+        x_pool_list: List[Tensor] = [F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list]
 
         # Concatenate x_pool_list to feed the fully connected layer(全結合層).
         # x_pool_listを連結して、fully connected layerに投入する為のshapeに返還
         # Output shape: (batch_size, sum(num_filters))
-        x_fc: Tensor = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list],
-                                 dim=1)
+        x_fc: Tensor = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list], dim=1)
 
         # Compute logits. Output shape: (batch_size, dim_output)
         logits = self.fc(self.dropout(x_fc))
@@ -155,50 +148,51 @@ Deep Learningのモデルを学習させるためには、損失関数を定義�
 """
 
 
-def initilize_model(pretrained_embedding: torch.Tensor = None,
-                    freeze_embedding=False,
-                    vocab_size=None,
-                    embed_dim=300,
-                    filter_sizes=[3, 4, 5],
-                    num_filters=[100, 100, 100],
-                    num_classes=2,
-                    dropout=0.5,
-                    learning_rate=0.01,
-                    device: torch.device = None
-                    ) -> Tuple[CNN_NLP, optim.Adadelta]:
+def initilize_model(
+    pretrained_embedding: torch.Tensor = None,
+    freeze_embedding=False,
+    vocab_size=None,
+    embed_dim=300,
+    filter_sizes=[3, 4, 5],
+    num_filters=[100, 100, 100],
+    num_classes=2,
+    dropout=0.5,
+    learning_rate=0.01,
+    device: torch.device = None,
+) -> Tuple[CNN_NLP, optim.Adadelta]:
     """Instantiate a CNN model and an optimizer.
 
     Parameters
     ----------
-    pretrained_embedding (torch.Tensor): 
+    pretrained_embedding (torch.Tensor):
         Pretrained embeddings with
         shape (vocab_size, embed_dim)。学習済みの単語埋め込みベクトル。
         Default: None
-    freeze_embedding (bool): 
+    freeze_embedding (bool):
         Set to False to fine-tune pretraiend
         vectors. 学習済みの単語埋め込みベクトルをfine-tuningするか否か。
         Default: False
-    vocab_size (int): 
+    vocab_size (int):
         Need to be specified when not pretrained word
         embeddings are not used. 学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
         Default: None
-    embed_dim (int): 
+    embed_dim (int):
         Dimension of word vectors. Need to be specified
-        when pretrained word embeddings are not used. 
+        when pretrained word embeddings are not used.
         学習済みの単語埋め込みベクトルが渡されない場合、指定する必要がある。
         Default: 300
-    filter_sizes (List[int]): 
-        List of filter sizes. 
+    filter_sizes (List[int]):
+        List of filter sizes.
         畳み込み層のスライド窓関数のwindow sizeを指定する。
         Default: [3, 4, 5]
-    num_filters (List[int]): 
+    num_filters (List[int]):
         List of number of filters, has the same
         length as `filter_sizes`. 畳み込み層のスライド窓関数(Shared weihgt)の数
         Default: [100, 100, 100]
-    dim_output (int): 
+    dim_output (int):
         Number of classes. 最終的なCNNの出力次元数。
         Default: 2
-    dropout (float): 
+    dropout (float):
         Dropout rate. 中間層のいくつかのニューロンを一定確率でランダムに選択し非活性化する。
         Default: 0.5
     learning_rate : float, optional
@@ -211,27 +205,31 @@ def initilize_model(pretrained_embedding: torch.Tensor = None,
     Tuple(CNN_NLP, optim.Adadelta)
         Initializeしたモデルと、Optimizerオブジェクトを返す。
     """
-    assert (len(filter_sizes) == len(num_filters)), "filter_sizes and \
+    assert len(filter_sizes) == len(
+        num_filters
+    ), "filter_sizes and \
     num_filters need to be of the same length."
 
     # Instantiate CNN model
-    cnn_model = CNN_NLP(pretrained_embedding=pretrained_embedding,
-                        freeze_embedding=freeze_embedding,
-                        vocab_size=vocab_size,
-                        embed_dim=embed_dim,
-                        filter_sizes=filter_sizes,
-                        num_filters=num_filters,
-                        dim_output=num_classes,
-                        dropout=dropout
-                        )
+    cnn_model = CNN_NLP(
+        pretrained_embedding=pretrained_embedding,
+        freeze_embedding=freeze_embedding,
+        vocab_size=vocab_size,
+        embed_dim=embed_dim,
+        filter_sizes=filter_sizes,
+        num_filters=num_filters,
+        dim_output=num_classes,
+        dropout=dropout,
+    )
 
     # Send model to `device` (GPU/CPU)
     cnn_model.to(device)
 
     # Instantiate Adadelta optimizer
-    optimizer = optim.Adadelta(params=cnn_model.parameters(),  # 最適化対象
-                               lr=learning_rate,  # parameter更新の学習率
-                               rho=0.95  # 移動指数平均の係数(? きっとハイパーパラメータ)
-                               )
+    optimizer = optim.Adadelta(
+        params=cnn_model.parameters(),  # 最適化対象
+        lr=learning_rate,  # parameter更新の学習率
+        rho=0.95,  # 移動指数平均の係数(? きっとハイパーパラメータ)
+    )
 
     return cnn_model, optimizer

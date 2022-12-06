@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -33,22 +33,22 @@ class ItemDescrptionPreparer:
 
         tokens_in_texts = self._tokenize_text_series(text_series)
 
-        dictionary = self._register_tokens_to_dict(tokens_in_texts)
+        self.dictionary = self._register_tokens_to_dict(tokens_in_texts)
 
         # TODO: unknown_word_indexをeos_id(idxの最後尾+1)にする必要ある?
-        self.n_all_tokens_registerd = len(dictionary.keys())
+        self.n_all_tokens_registerd = len(self.dictionary.keys())
 
         token_idx_array_in_texts = self._get_index_each_token(
             tokens_in_texts,
-            dictionary,
+            self.dictionary,
             idx_for_unknown_token=self.n_all_tokens,  # tokenのidxの最後尾+1をunkown_token用のidxに
         )
 
-        max_token_num_in_text = max([len(token_idx_array) for token_idx_array in token_idx_array_in_texts])
+        self.max_token_num_in_text = max([len(token_idx_array) for token_idx_array in token_idx_array_in_texts])
 
         token_idx_array_in_texts_padded = self._padding_all_discriptions(
             token_idx_array_in_texts,
-            max_token_num_in_text,
+            self.max_token_num_in_text,
             idx_for_unknown_token=self.n_all_tokens,  # tokenのidxの最後尾+1をunkown_token用のidxに
         )
 
@@ -167,6 +167,18 @@ class ItemDescrptionPreparer:
     @property
     def n_all_tokens(self):
         return self.n_all_tokens_registerd
+
+    @property
+    def max_length_in_one_description(self) -> int:
+        return self.max_token_num_in_text
+
+    @property
+    def word2idx_mapping(self) -> Dict[str, int]:
+        return {word: idx for idx, word in self.dictionary.items()}
+
+    @property
+    def idx2word_mapping(self) -> Dict[int, str]:
+        return dict(self.dictionary)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ from typing import Dict, Hashable, List, NamedTuple, Optional
 import numpy as np
 import pandas as pd
 from pydantic.dataclasses import dataclass
-from tqdm import tqdm
 
 
 @dataclass

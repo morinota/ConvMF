@@ -1,19 +1,17 @@
-import os
-from typing import Dict, Hashable, List, NamedTuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from pydantic.dataclasses import dataclass
 from tqdm import tqdm
 
 from src.dataclasses.index_rating_mappings import IndexRatingSet
 from src.dataclasses.rating_data import RatingLog
 
 
-class MatrixFactrization(object):
+class MatrixFactrization:
     def __init__(
         self,
-        ratings: List[RatingLog],
+        rating_logs: List[RatingLog],
         n_factor: int = 300,
         user_lambda: float = 0.001,
         item_lambda: float = 0.001,
@@ -32,39 +30,65 @@ class MatrixFactrization(object):
             ConvMFのハイパーパラメータ \lambda_V, by default 0.001
         n_item : int, optional
             MFで使用するアイテム数, by default None
+            rating_logsに含まれているアイテムだけでいい場合はNone。
+            ただし、例えば新アイテム(まだlogがない)を含めたい場合は設定する必要がある。
+            そしてConvMFはアイテムのコールドスタート問題に対応する事を目的の一つとしてるので、
+            設定すべき。
         """
-
-        data = pd.DataFrame(ratings)
-
-        # Rating matrixの形状(行数＝user数、列数=item数)を指定。
-        self.n_user = max(data["user"].unique()) + 1  # 行数=0始まりのuser_id+1
-        self.n_item = n_item if n_item is not None else max(data["item"].unique()) + 1  # 列数=0始まりのitem_id+1
         self.n_factor = n_factor
         self.user_lambda = user_lambda
         self.item_lambda = item_lambda
 
-        # user latent matrix をInitialize
-        self.user_factor = np.random.normal(size=(self.n_factor, self.n_user)).astype(np.float32)
-        # item latent matrix をInitialize
-        self.item_factor = np.random.normal(size=(self.n_factor, self.n_item)).astype(np.float32)
+        # TODO: DataFrameとして扱った方が早いのだろうか...??
+        rating_logs_df = pd.DataFrame(rating_logs)
 
-        # パラメータ更新時にアクセスしやすいように、Ratingsを整理しておく
-        # 各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratingsを取得
-        self.user_item_list: Dict[int, IndexRatingSet] = {
-            user_i: v
-            for user_i, v in data.groupby("user")
-            .apply(lambda x: IndexRatingSet(indices=x["item"].values, ratings=x["rating"].values))
+        self.n_user, self.n_item = self._set_rating_matrix_dimension(rating_logs_df, n_item)
+
+        self.user_factor, self.item_factor = self._initialize_user_and_item_factors()
+
+        self.user_id_ratings_mapping = self._collect_rating_logs_each_user(rating_logs_df)
+        self.item_id_ratings_mapping = self._collect_rating_logs_each_item(rating_logs_df)
+
+    def _set_rating_matrix_dimension(self, rating_logs_df: pd.DataFrame, n_item: int) -> Tuple[int, int]:
+        """Rating matrixの形状(行数＝user数、列数=item数)を設定する"""
+        n_user = len(rating_logs_df["user_id"].unique())
+        # TODO: ↓n_item = 0始まりのitem_idの最後尾 + 1() これは現実的なんだろうか...?
+        n_item = n_item if n_item is not None else max(rating_logs_df["item_id"].unique()) + 1
+        return n_user, n_item
+
+    def _initialize_user_and_item_factors(self) -> Tuple[np.ndarray, np.ndarray]:
+        """ "user_factor(user latent matrix)とitem_factor(item latent matrix)をInitialize"""
+        user_factor_initialized = np.random.normal(size=(self.n_factor, self.n_user)).astype(np.float32)
+        item_factor_initialized = np.random.normal(size=(self.n_factor, self.n_item)).astype(np.float32)
+        return user_factor_initialized, item_factor_initialized
+
+    def _collect_rating_logs_each_user(self, rating_logs_df: pd.DataFrame) -> Dict[int, IndexRatingSet]:
+        """パラメータ更新時にアクセスしやすいように、
+        各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratingsを取得
+        """
+        user_id_and_item_ratings_mapping = {
+            user_id: item_rating_set
+            for user_id, item_rating_set in rating_logs_df.groupby("user_id")
+            .apply(lambda x: IndexRatingSet(indices=x["item_id"].to_list(), ratings=x["rating"].to_list()))
             .items()
         }
-        # 各itemに対する、Rating Matrixにおける非ゼロ要素のusersとratings
-        self.item_user_list: Dict[int, IndexRatingSet] = {
-            item_i: v
-            for item_i, v in data.groupby("item")
-            .apply(lambda x: IndexRatingSet(indices=x["user"].values, ratings=x["rating"].values))
+        return user_id_and_item_ratings_mapping
+
+    def _collect_rating_logs_each_item(self, rating_logs_df: pd.DataFrame) -> Dict[int, IndexRatingSet]:
+        """パラメータ更新時にアクセスしやすいように、各itemに関するrating_logsを整理しておく.
+        返り値は、「item_id: Rating Matrixにおける非ゼロ要素のuser_idsとratings」のmapping dict
+        """
+        item_id_and_user_ratings_mapping = {
+            item_id: users_ratings_set
+            for item_id, users_ratings_set in rating_logs_df.groupby("item_id")
+            .apply(lambda x: IndexRatingSet(indices=x["user_id"].to_list(), ratings=x["rating"].to_list()))
             .items()
         }
+        return item_id_and_user_ratings_mapping
 
-    def fit(self, n_trial: int = 5, document_vectors: Optional[List[np.ndarray]] = None) -> None:
+    def fit(
+        self, n_trial: int = 5, document_vectors: Optional[List[np.ndarray]] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """U:user latent matrix とV:item latent matrixを推定するメソッド。
         Args:
             n_trial (int, optional):
@@ -79,7 +103,9 @@ class MatrixFactrization(object):
             self._update_user_factors()
             self._update_item_factors(document_vectors)
 
-    def predict(self, users: List[int], items: List[int]) -> np.ndarray:
+        return self.user_factor, self.item_factor
+
+    def predict(self, user_ids: List[int], item_ids: List[int]) -> np.ndarray:
         """user factor vectorとitem factor vectorの内積をとって、r\hatを推定
 
         Args:
@@ -87,9 +113,10 @@ class MatrixFactrization(object):
             items (List[int]): 評価値を予測したいアイテムidのlist
         """
         ratings_hat = []
-        for user_i, item_i in zip(users, items):
+        for user_id, item_i in zip(user_ids, item_ids):
+
             # ベクトルの内積を計算
-            r_hat = np.inner(self.user_factor[:, user_i], self.item_factor[:, item_i])
+            r_hat = np.inner(self.user_factor[:, user_id], self.item_factor[:, item_i])
             ratings_hat.append(r_hat)
         # ndarrayで返す。
         return np.array(ratings_hat)
@@ -97,10 +124,10 @@ class MatrixFactrization(object):
     def _update_user_factors(self):
         """user latent vector (user latent matrixの列ベクトル)を更新する処理"""
         # 各user_id毎(=>各user latent vector毎)に繰り返し処理
-        for i in self.user_item_list.keys():
+        for i in self.user_item_mapping.keys():
             # rating matrix内のuser_id行のitem indicesとratingsを取得
-            indices = self.user_item_list[i].indices
-            ratings = self.user_item_list[i].ratings
+            indices = self.user_item_mapping[i].indices
+            ratings = self.user_item_mapping[i].ratings
             # item latent vector(ここでは定数)を取得
             v = self.item_factor[:, indices]
             # 以下、更新式の計算(aが左側の項, bが右側の項)
@@ -145,4 +172,10 @@ class MatrixFactrization(object):
 
 
 if __name__ == "__main__":
-    pass
+    rating_logs_sample = [
+        RatingLog(user_id=0, item_id=1, rating=2.0),
+        RatingLog(user_id=1, item_id=1, rating=5.0),
+        RatingLog(user_id=3, item_id=3, rating=3.0),
+        RatingLog(user_id=4, item_id=2, rating=1.0),
+    ]
+    mf_obj = MatrixFactrization(rating_logs_sample)
