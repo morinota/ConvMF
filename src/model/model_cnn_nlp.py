@@ -9,6 +9,8 @@ from torch import Tensor
 
 from src.dataclasses.embedding_layer_info import EmbeddingLayerInfo
 
+# torch.set_default_tensor_type("torch.cuda.FloatTensor")
+
 
 class CnnNlpModel(nn.Module):
     """An 1D Convulational Neural Network for Sentence Classification."""
@@ -55,7 +57,7 @@ class CnnNlpModel(nn.Module):
         """
         super(CnnNlpModel, self).__init__()
 
-        self.embeding_layer_info = self._define_embedding_layer(
+        self.embeding_layer, self.embed_dim = self._define_embedding_layer(
             pretrained_embedding,
             freeze_embedding,
             embed_dimension,
@@ -63,11 +65,11 @@ class CnnNlpModel(nn.Module):
         )
 
         self.conv1d_layers = self._define_conv_layers(
-            input_dim=self.embeding_layer_info.embed_dim,
+            input_dim=self.embed_dim,
             num_filters=num_filters,
             filter_sizes=filter_sizes,
         )
-        self.fc_layers = self._define_fc_layers(
+        self.fc_layer1, self.fc_layer2 = self._define_fc_layers(
             input_dim=np.sum(num_filters),
             output_dim=output_dimension,
         )
@@ -80,7 +82,7 @@ class CnnNlpModel(nn.Module):
         freeze_embedding: bool = False,
         embed_dimension: Optional[int] = None,
         vocab_size: Optional[int] = None,
-    ) -> EmbeddingLayerInfo:
+    ) -> Tuple[nn.Embedding, int]:
         """Embedding layer(埋め込み層)の定義
         - 学習済みの単語埋め込みベクトルの配列が指定されない場合、embed_dimensionとvocab_sizeに基づき単語埋め込みベクトルを初期化
         - 指定された場合、pretrained_embedding_vectorsに基づき、nn.Embeddingを生成
@@ -102,11 +104,7 @@ class CnnNlpModel(nn.Module):
                 freeze=freeze_embedding,
             )
 
-        return EmbeddingLayerInfo(
-            layer=embedding_layer,
-            embed_dim=embed_dimension,
-            vocab_num=vocab_size,
-        )
+        return embedding_layer, embed_dimension
 
     def _define_conv_layers(
         self,
@@ -134,15 +132,15 @@ class CnnNlpModel(nn.Module):
         self,
         input_dim: int,
         output_dim: int,
-    ) -> List[nn.Linear]:
+    ) -> Tuple[nn.Linear, nn.Linear]:
         """Fully-connected layer and Dropout 全結層を定義する
         - 入力d_f(次元数はR^{n_c}), 出力はs_j(次元数はR^{n_factor})
         - バイアス項あり。活性化関数は2回ともtanh.
         """
-        middle_dim = input_dim * 2
-        fc1 = nn.Linear(in_features=np.sum(input_dim), out_features=middle_dim)
-        fc2 = nn.Linear(in_features=middle_dim, out_features=output_dim)
-        return [fc1, fc2]
+        hidden_dim = input_dim * 2
+        fc1 = nn.Linear(in_features=input_dim, out_features=hidden_dim)
+        fc2 = nn.Linear(in_features=hidden_dim, out_features=output_dim)
+        return fc1, fc2
 
     def forward(self, input_ids: Tensor):
         """Perform a forward pass through the network.
@@ -161,28 +159,49 @@ class CnnNlpModel(nn.Module):
             logits (torch.Tensor): Output logits
             with shape (batch_size, dim_output)
         """
-        x_embed = self.embeding_layer_info.layer(input_ids).float()
-        # -> Output shape: (batch_size, max_len, embed_dim) ex) (32, 100, 300)
-
+        x_embed: Tensor = self.embeding_layer(input_ids).float()
+        # -> Output shape: (batch_size, length_of_sentence, embed_dim) ex) (32, 100, 300)
+        print(f"[debug]x_embed:{x_embed.shape}")
         x_reshaped = x_embed.permute(0, 2, 1)
         # -> Output shape: (batch_size, embed_dim, max_len) ex) (32, 300, 100)
+        print(f"[debug]x_reshaped: {x_reshaped.shape}")
 
         x_conv_list = [F.relu(conv1d(x_reshaped)) for conv1d in self.conv1d_layers]
         # ->Output shape: (batch_size, num_filters[i], L_out(convolutionの出力数))
         # ex) (32, (100 or 100 or 100), 100)
+        print(f"[debug]len(x_conv_list) {len(x_conv_list)}")
+        print(f"[debug]{x_conv_list[0].shape}")
 
-        x_pool_list: List[Tensor] = [F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list]
+        x_pool_list: List[Tensor] = [
+            F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list
+        ]
+        print(f"[debug]len(x_pool_list) {len(x_pool_list)}")
+        print(f"[debug]x_pool_list[0].shape {x_pool_list[0].shape}")
         # ->Output shape: (batch_size, (100 or 100 or 100), 1) kernel_size引数はx_convの次元数に！=>poolingの出力は1次元!
         # ex) (32, 300, 100)
 
-        # x_squeezed_for_fc = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list], dim=1)
-        # ->Output shape: (batch_size, sum(num_filters))
+        x_squeezed_for_fc = torch.cat(
+            [x_pool.squeeze(dim=2) for x_pool in x_pool_list], dim=1
+        )
+        print(f"[debug]x_squeezed_for_fc: {x_squeezed_for_fc.shape}")
 
-        x_fc1_list = [F.tanh(self.fc_layers[0](x_pool)) for x_pool in x_pool_list]
-        x_fc2_list = [F.tanh(self.fc_layers[1](x_fc1)) for x_fc1 in x_fc1_list]
-        x_fc2 = torch.cat(tensors=x_fc2_list, dim=1)
+        # ->Output shape: (batch_size(データ数), sum(num_filters))
+
+        x_fc1 = torch.tanh(self.fc_layer1(x_squeezed_for_fc))
+        print(f"[debug]x_fc1: {x_fc1.shape}")
+
+        x_fc2 = torch.tanh(self.fc_layer2(x_fc1))
+        print(f"[debug]x_fc2: {x_fc2.shape}")
+
+        # x_fc2_list = [F.tanh(self.fc_layer2(x_fc1)) for x_fc1 in x_fc1_list]
+        # x_fc2 = torch.cat(tensors=x_fc2_list, dim=1)
 
         return x_fc2  # -> Output shape: (batch_size, dim_output)
+
+    def predict(self, token_indices_arrays: List[np.ndarray]) -> Tensor:
+        self.eval()
+
+        pass
 
 
 """To train Deep Learning models, we need to define a loss function 

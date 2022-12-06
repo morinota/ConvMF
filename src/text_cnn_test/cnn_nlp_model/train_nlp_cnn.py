@@ -1,8 +1,10 @@
+from operator import mod
 import random
 import time
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
+from src.model.model_cnn_nlp import CnnNlpModel
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,10 +29,10 @@ def train(
     optimizer: optim.Adadelta,
     device: torch.device,
     train_dataloader: DataLoader,
-    val_dataloader: DataLoader = None,
+    val_dataloader: Optional[DataLoader] = None,
     epochs: int = 10,
-) -> nn.Module:
-    """Train the CNN_NLP model.
+) -> CnnNlpModel:
+    """Train the CNN_NLP model. 学習を終えたCNN_NLPオブジェクトを返す。
 
     Parameters
     ----------
@@ -52,6 +54,8 @@ def train(
     学習を終えたCNN_NLPオブジェクト
         nn.Module
     """
+    # modelをdeviceに渡す
+    model.to(device)
 
     # Tracking best validation accuracy
     best_accuracy = 0
@@ -75,13 +79,13 @@ def train(
         # バッチ学習
         for step, batch in enumerate(train_dataloader):
             # inputデータとoutputデータを分割
-            b_input_ids, b_labels = tuple(t for t in batch)
+            batch_input_ids, batch_labels = tuple(tensors for tensors in batch)
 
             # ラベル側をキャストする(そのままだと何故かエラーが出るから)
-            b_labels: Tensor = b_labels.type(torch.LongTensor)
+            batch_labels: Tensor = batch_labels.type(torch.LongTensor)
             # データをGPUにわたす。
-            b_input_ids: Tensor = b_input_ids.to(device)
-            b_labels: Tensor = b_labels.to(device)
+            batch_input_ids: Tensor = batch_input_ids.to(device)
+            batch_labels: Tensor = batch_labels.to(device)
 
             # Zero out any previously calculated gradients
             # 1バッチ毎に勾配の値を初期化(累積してく仕組みだから...)
@@ -89,10 +93,10 @@ def train(
 
             # Perform a forward pass. This will return logits.
             # モデルにinputデータを入力して、出力値を得る。
-            output_pred = model(b_input_ids)
+            output_pred = model(batch_input_ids)
             # Compute loss and accumulate the loss values
             # 損失関数の値を計算
-            loss = loss_fn(input=output_pred, target=b_labels)
+            loss = loss_fn(input=output_pred, target=batch_labels)
             # 1 epoch全体の損失関数の値を評価する為に、1 batch毎の値を累積していく.
             total_loss += loss.item()
 
@@ -111,7 +115,9 @@ def train(
         if val_dataloader is not None:
             # After the completion of each training epoch, measure the model's
             # performance on our validation set.
-            val_loss, val_accuracy = evaluate(model=model, val_dataloader=val_dataloader, device=device)
+            val_loss, val_accuracy = evaluate(
+                model=model, val_dataloader=val_dataloader, device=device
+            )
 
             # Track the best accuracy
             if val_accuracy > best_accuracy:
@@ -120,8 +126,12 @@ def train(
             # Print performance over the entire training data
             time_elapsed = time.time() - t0_epoch
             print(f"the validation result of epoch {epoch_i + 1:^7} is below.")
-            print(f"the values of loss function : train(average)={avg_train_loss:.6f}, valid={val_loss:.6f}")
-            print(f"accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}")
+            print(
+                f"the values of loss function : train(average)={avg_train_loss:.6f}, valid={val_loss:.6f}"
+            )
+            print(
+                f"accuracy of valid data: {val_accuracy:.2f}, time: {time_elapsed:.2f}"
+            )
 
         print("-" * 20)
 
@@ -132,7 +142,9 @@ def train(
     return model
 
 
-def evaluate(model: nn.Module, val_dataloader: DataLoader, device: torch.device) -> Tuple[np.ndarray]:
+def evaluate(
+    model: nn.Module, val_dataloader: DataLoader, device: torch.device
+) -> Tuple[np.ndarray]:
     """各epochの学習が完了した後、検証用データを使ってモデルの汎化性能を評価する。
     After the completion of each training epoch, measure the model's
     performance on our validation set.

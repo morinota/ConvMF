@@ -1,10 +1,16 @@
 import time
+from src.text_cnn_test.cnn_nlp_model.train_nlp_cnn import train
+from src.text_cnn_test.utils.dataloader import create_data_loaders
 
+import torch
+from sklearn.model_selection import train_test_split
 from src.config import MyConfig
+from src.dataclasses.item_description import ItemDescription
 from src.model.matrix_factorization import MatrixFactrization
 from src.model.model_cnn_nlp import CnnNlpModel, initilize_cnn_nlp_model
 from src.utils.item_description_preparer import ItemDescrptionPreparer
 from src.utils.rating_log_loader import RatingLogReader
+from src.utils.word_vector_preparer import WordEmbeddingVector
 
 
 def train_convmf(batch_size: int, n_epoch: int, n_sub_epoch: int, n_out_channel: int):
@@ -39,23 +45,59 @@ def train_convmf(batch_size: int, n_epoch: int, n_sub_epoch: int, n_out_channel:
 
 
 def main():
-    # rating_log_reader = RatingLogReader(ratings_csv_path=MyConfig.ratings_path)
-    # rating_logs = rating_log_reader.load()
-    # print(len(rating_logs))
+    rating_log_reader = RatingLogReader(ratings_csv_path=MyConfig.ratings_path)
+    rating_logs = rating_log_reader.load()
+    print(len(rating_logs))
 
     max_sentence_length = 300  # 300 token(word)
     item_description_prepaper = ItemDescrptionPreparer(MyConfig.descriptions_path)
     item_descriptions = item_description_prepaper.load(max_sentence_length)
     token2idxs_mapping = item_description_prepaper.word2idx_mapping
-    idx2token_mapping = item_description_prepaper.idx2word_mapping
-    max_token_num_in_description = item_description_prepaper.max_length_in_one_description
-    print(token2idxs_mapping)
-    # print(idx2token_mapping)
-    print(max_token_num_in_description)
+    token_indices_array = ItemDescription.merge_token_indices_of_descriptions(
+        item_descriptions,
+    )
 
-    # mf_obj = MatrixFactrization(rating_logs=rating_logs, n_factor=10)
+    embedding_vectors = WordEmbeddingVector.load_pretrained_vectors(
+        token2idxs_mapping,
+        MyConfig.fast_text_path,
+        padding_word="<pad>",
+    )
 
-    # cnn_nlp, optimizer = initilize_cnn_nlp_model()
+    # check the device (GPU|CPU)
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    mf_obj = MatrixFactrization(rating_logs=rating_logs, n_factor=10)
+
+    # train test split
+    train_inputs, val_inputs, train_labels, val_labels = train_test_split(
+        token_indices_array, mf_obj.item_factor, test_size=0.1, random_state=42
+    )
+
+    # Load data to Pytorch DataLoader
+    train_dataloader, val_dataloader = create_data_loaders(
+        train_inputs=train_inputs,
+        val_inputs=val_inputs,
+        train_labels=train_labels,
+        val_labels=val_labels,
+        batch_size=50,
+    )
+
+    cnn_nlp, optimizer = initilize_cnn_nlp_model(
+        pretrained_embedding=embedding_vectors.to_tensor(),
+        freeze_embedding=True,  # fastText で事前学習された単語ベクトルが使われ、学習中は凍結される。
+        learning_rate=0.25,
+        dropout=0.5,
+        device=device,
+        output_dimension=mf_obj.n_factor,
+    )
+
+    cnn_nlp_trained = train(
+        model=cnn_nlp,
+        optimizer=optimizer,
+        train_dataloader=train_dataloader,
+        epochs=20,
+        device=device,
+    )
 
     # mf_obj.fit(n_trial=5, document_vectors=None)
 

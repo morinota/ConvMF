@@ -12,3 +12,5 @@ class MyConfig:
     # 整形後のRating matrixとDescripiton documents
     ratings_path = os.path.join(data_dir, "ratings.csv")
     descriptions_path = os.path.join(data_dir, "descriptions.csv")
+
+    fast_text_path = os.path.join(data_dir, r"fastText\crawl-300d-2M.vec")
