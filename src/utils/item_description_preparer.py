@@ -41,7 +41,7 @@ class ItemDescrptionPreparer:
         token_idx_array_in_texts = self._get_index_each_token(
             tokens_in_texts,
             self.dictionary,
-            idx_for_unknown_token=self.n_all_tokens,  # tokenのidxの最後尾+1をunkown_token用のidxに
+            idx_for_unknown_token=self.token_num_registered,  # tokenのidxの最後尾+1をunkown_token用のidxに
         )
 
         self.max_token_num_in_text = max([len(token_idx_array) for token_idx_array in token_idx_array_in_texts])
@@ -49,7 +49,7 @@ class ItemDescrptionPreparer:
         token_idx_array_in_texts_padded = self._padding_all_discriptions(
             token_idx_array_in_texts,
             self.max_token_num_in_text,
-            idx_for_unknown_token=self.n_all_tokens,  # tokenのidxの最後尾+1をunkown_token用のidxに
+            idx_for_unknown_token=self.token_num_registered,  # tokenのidxの最後尾+1をunkown_token用のidxに
         )
 
         # change types
@@ -166,7 +166,8 @@ class ItemDescrptionPreparer:
         return token_idx_array_in_texts_padded
 
     @property
-    def n_all_tokens(self):
+    def token_num_registered(self) -> int:
+        """dictionaryに登録されたtoken数を返す"""
         return self.n_all_tokens_registerd
 
     @property
@@ -176,7 +177,7 @@ class ItemDescrptionPreparer:
     @property
     def word2idx_mapping(self) -> Dict[str, int]:
         word2idx_mapping = {word: idx for idx, word in self.dictionary.items()}
-        word2idx_mapping["<pad>"] = self.padding_word_idx # dictionaryにはpaddingが未登録の為追加
+        word2idx_mapping["<pad>"] = self.padding_word_idx  # dictionaryにはpaddingが未登録の為追加
         return word2idx_mapping
 
     @property
@@ -187,6 +188,6 @@ class ItemDescrptionPreparer:
 if __name__ == "__main__":
     item_description_preparer = ItemDescrptionPreparer(MyConfig.descriptions_path)
     item_descriptions = item_description_preparer.load()
-    n_all_tokens = item_description_preparer.n_all_tokens
+    n_all_tokens = item_description_preparer.token_num_registered
     print(item_descriptions[1])
     print(n_all_tokens)

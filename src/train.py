@@ -1,10 +1,12 @@
 import time
+from typing import List, Tuple
 
 import torch
 from sklearn.model_selection import train_test_split
 
 from src.config import MyConfig
 from src.dataclasses.item_description import ItemDescription
+from src.dataclasses.rating_data import RatingLog
 from src.model.matrix_factorization import MatrixFactrization
 from src.model.model_cnn_nlp import CnnNlpModel, initilize_cnn_nlp_model
 from src.text_cnn_test.cnn_nlp_model.train_nlp_cnn import train
@@ -14,35 +16,25 @@ from src.utils.rating_log_loader import RatingLogReader
 from src.utils.word_vector_preparer import WordEmbeddingVector
 
 
-def train_convmf(batch_size: int, n_epoch: int, n_sub_epoch: int, n_out_channel: int):
-    """_summary_
-
-    Parameters
-    ----------
-    batch_size : int
-        _description_
-    n_epoch : int
-        _description_
-    n_sub_epoch : int
-        _description_
-    n_out_channel : int
-        _description_
+def train_convmf(
+    rating_logs: List[RatingLog],
+    item_descriptions: List[ItemDescription],
+    embedding_vectors: WordEmbeddingVector,
+    batch_size: int,
+    n_epoch: int,
+    n_sub_epoch: int,
+    n_out_channel: int,
+    filter_windows: List[int] = [3, 4, 5],  # 窓関数の設定
+    max_token_num_in_sentence: int = 300,
+    n_factor: int = 300,
+    dropout_ratio: float = 0.5,
+    user_lambda: float = 10.0,
+    item_lambda: float = 100.0,
+) -> Tuple[MatrixFactrization, CnnNlpModel]:
+    """学習に必要なrating_logs、item_descriptions, embedding_vectorsを受け取り、
+    指定されたハイパーパラメータ達を使って学習を実行する
     """
-
-    rating_log_reader = RatingLogReader(ratings_csv_path=MyConfig.ratings_path)
-    rating_logs = rating_log_reader.load()
-
-    filter_windows = [3, 4, 5]  # 窓関数の設定
-    max_sentence_length = 300  # 300 token(word)
-
-    item_description_prepaper = ItemDescrptionPreparer(MyConfig.descriptions_path)
-    item_descriptions = item_description_prepaper.load(max_sentence_length)
-    n_token = item_description_prepaper.n_all_tokens
-
-    n_factor = 300
-    dropout_ratio = 0.5
-    user_lambda = 10
-    item_lambda = 100
+    pass
 
 
 def main():
