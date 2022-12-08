@@ -7,8 +7,8 @@ from sklearn.model_selection import train_test_split
 from src.config import MyConfig
 from src.dataclasses.item_description import ItemDescription
 from src.dataclasses.rating_data import RatingLog
+from src.model.cnn_nlp_model import CnnNlpModel, initilize_cnn_nlp_model
 from src.model.matrix_factorization import MatrixFactrization
-from src.model.model_cnn_nlp import CnnNlpModel, initilize_cnn_nlp_model
 from src.text_cnn_test.cnn_nlp_model.train_nlp_cnn import train
 from src.text_cnn_test.utils.dataloader import create_data_loaders
 from src.utils.item_description_preparer import ItemDescrptionPreparer
@@ -34,7 +34,6 @@ def train_convmf(
     """学習に必要なrating_logs、item_descriptions, embedding_vectorsを受け取り、
     指定されたハイパーパラメータ達を使って学習を実行する
     """
-    pass
 
 
 def main():
