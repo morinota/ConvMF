@@ -2,7 +2,7 @@ from typing import Dict, List
 
 import numpy as np
 import torch
-from torch import Tensor, embedding
+from torch import Tensor
 
 from src.dataclasses.item_description import ItemDescription
 from src.dataclasses.rating_data import RatingLog
@@ -100,6 +100,7 @@ class ConvMF(object):
         return
 
     def predict(self, user_ids: List[int], item_ids: List[int]) -> List[np.ndarray]:
+        """指定されたitem_id, user_idの類似度(ベクトルの内積)を返す"""
         # item factor Vを取得
         # (item descriptionを使う。新アイテムのベクトルも算出できるので)
         # といいつつ、item_idsを指定してpredictする場合には、
@@ -112,10 +113,11 @@ class ConvMF(object):
 
         return predictions
 
-    def get_document_latent_vectors(self, item_ids: List[int]) -> List[np.ndarray]:
+    def get_document_latent_vectors(self, item_ids: List[int]) -> Dict[int, np.ndarray]:
         """item_id: document_latent_vectorのmapを返す"""
-        item_factors = self.cnn_nlp_obj(x=np.array([self.item_descriptions[id].token_indices for id in item_ids]))
-        return item_factors
+        token_indices_arrays = [self.item_descriptions[id].token_indices for id in item_ids]
+        item_factors = self.cnn_nlp_obj.predict(token_indices_arrays)
+        return {item_id: item_factors[idx] for idx, item_id in enumerate(item_ids)}
 
     def get_user_latent_vectors(self, user_ids: List[int]) -> Dict[int, np.ndarray]:
         """user_id: user_latent_vectorのmapを返す"""
