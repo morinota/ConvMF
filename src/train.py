@@ -1,13 +1,14 @@
 import time
-from src.text_cnn_test.cnn_nlp_model.train_nlp_cnn import train
-from src.text_cnn_test.utils.dataloader import create_data_loaders
 
 import torch
 from sklearn.model_selection import train_test_split
+
 from src.config import MyConfig
 from src.dataclasses.item_description import ItemDescription
 from src.model.matrix_factorization import MatrixFactrization
 from src.model.model_cnn_nlp import CnnNlpModel, initilize_cnn_nlp_model
+from src.text_cnn_test.cnn_nlp_model.train_nlp_cnn import train
+from src.text_cnn_test.utils.dataloader import create_data_loaders
 from src.utils.item_description_preparer import ItemDescrptionPreparer
 from src.utils.rating_log_loader import RatingLogReader
 from src.utils.word_vector_preparer import WordEmbeddingVector
@@ -107,8 +108,14 @@ def main():
         epochs=20,
         device=device,
     )
+    document_vectors = cnn_nlp_trained.predict(
+        token_indices_arrays=[item_d.token_indices for item_d in item_descriptions],
+    )
 
-    # mf_obj.fit(n_trial=5, document_vectors=None)
+    mf_obj.fit(
+        n_trial=5,
+        document_vectors=document_vectors,
+    )
 
 
 if __name__ == "__main__":
