@@ -172,17 +172,13 @@ class CnnNlpModel(nn.Module):
         print(f"[debug]len(x_conv_list) {len(x_conv_list)}")
         print(f"[debug]{x_conv_list[0].shape}")
 
-        x_pool_list: List[Tensor] = [
-            F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list
-        ]
+        x_pool_list: List[Tensor] = [F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list]
         print(f"[debug]len(x_pool_list) {len(x_pool_list)}")
         print(f"[debug]x_pool_list[0].shape {x_pool_list[0].shape}")
         # ->Output shape: (batch_size, (100 or 100 or 100), 1) kernel_size引数はx_convの次元数に！=>poolingの出力は1次元!
         # ex) (32, 300, 100)
 
-        x_squeezed_for_fc = torch.cat(
-            [x_pool.squeeze(dim=2) for x_pool in x_pool_list], dim=1
-        )
+        x_squeezed_for_fc = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list], dim=1)
         print(f"[debug]x_squeezed_for_fc: {x_squeezed_for_fc.shape}")
 
         # ->Output shape: (batch_size(データ数), sum(num_filters))
@@ -198,10 +194,18 @@ class CnnNlpModel(nn.Module):
 
         return x_fc2  # -> Output shape: (batch_size, dim_output)
 
-    def predict(self, token_indices_arrays: List[np.ndarray]) -> Tensor:
+    def predict(self, token_indices_arrays: List[np.ndarray]) -> List[np.ndarray]:
         self.eval()
+        token_indices_tensors = [torch.from_numpy(token_indices) for token_indices in token_indices_arrays]
+        batch_size = len(token_indices_tensors)
 
-        pass
+        # 計算グラフの構築を抑制します。これにより、推論時に不要な計算が省略されるようになります。
+        with torch.no_grad():
+            token_indices_tensors_batch = torch.stack(token_indices_tensors, dim=0)
+
+            outputs: Tensor = self(token_indices_tensors_batch)
+
+        return [item_description_vector.numpy() for item_description_vector in outputs]
 
 
 """To train Deep Learning models, we need to define a loss function 
