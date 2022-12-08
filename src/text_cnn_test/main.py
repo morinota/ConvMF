@@ -4,7 +4,6 @@ from typing import List
 
 import numpy as np
 import pandas as pd
-from src.utils.word_vector_preparer import WordEmbeddingVector
 import torch
 from cnn_nlp_model.train_nlp_cnn import set_seed, train
 from sklearn.model_selection import train_test_split
@@ -13,20 +12,18 @@ from src.config import MyConfig
 from src.dataclasses.item_description import ItemDescription
 from src.model.model_cnn_nlp import initilize_cnn_nlp_model
 from src.utils.item_description_preparer import ItemDescrptionPreparer
+from src.utils.word_vector_preparer import WordEmbeddingVector
 from utils.dataloader import create_data_loaders
 from utils.pretrained_vec import load_pretrained_vectors
 
 # nltk.download('all')
 from utils.tokenizes import conduct_tokenize, encode
 
-
 # FAST_TEXT_PATH = r'..\data\fastText\crawl-300d-2M.vec\crawl-300d-2M.vec'
 
 
 def load_word_vector():
-    URL = (
-        "https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip"
-    )
+    URL = "https://dl.fbaipublicfiles.com/fasttext/vectors-english/crawl-300d-2M.vec.zip"
     FILE = "fastText"
 
     if os.path.isdir(FILE):
@@ -52,9 +49,7 @@ def main():
         + [1] * len(item_descriptions[len(item_descriptions) % 2 :])
     )
 
-    print(
-        f"the num of texts data is {len(item_descriptions)}, and the num of labels is {len(labels)}."
-    )
+    print(f"the num of texts data is {len(item_descriptions)}, and the num of labels is {len(labels)}.")
 
     print(f"the num of vocabrary is {len(word2idx_mapping) - 2}")
     print(f"the shape of input_ids is {token_indices_array.shape}")
