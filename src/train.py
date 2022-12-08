@@ -66,7 +66,7 @@ def main():
 
     # train test split
     train_inputs, val_inputs, train_labels, val_labels = train_test_split(
-        token_indices_array, mf_obj.item_latent_vectors, test_size=0.1, random_state=42
+        token_indices_array, mf_obj.item_latent_factor, test_size=0.1, random_state=42
     )
 
     # Load data to Pytorch DataLoader

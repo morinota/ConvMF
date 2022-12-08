@@ -42,24 +42,16 @@ class MatrixFactrization:
         # TODO: DataFrameとして扱った方が早いのだろうか...??
         rating_logs_df = pd.DataFrame(rating_logs)
 
-        self.n_user, self.n_item = self._set_rating_matrix_dimension(
-            rating_logs_df, n_item
-        )
+        self.n_user, self.n_item = self._set_rating_matrix_dimension(rating_logs_df, n_item)
 
         self.user_factor, self.item_factor = self._initialize_user_and_item_factors()
 
-        self.user_id_ratings_mapping = self._collect_rating_logs_each_user(
-            rating_logs_df
-        )
-        self.item_id_ratings_mapping = self._collect_rating_logs_each_item(
-            rating_logs_df
-        )
+        self.user_id_ratings_mapping = self._collect_rating_logs_each_user(rating_logs_df)
+        self.item_id_ratings_mapping = self._collect_rating_logs_each_item(rating_logs_df)
 
-    def _set_rating_matrix_dimension(
-        self, rating_logs_df: pd.DataFrame, n_item: int
-    ) -> Tuple[int, int]:
+    def _set_rating_matrix_dimension(self, rating_logs_df: pd.DataFrame, n_item: int) -> Tuple[int, int]:
         """Rating matrixの形状(行数＝user数、列数=item数)を設定する"""
-        n_user = len(rating_logs_df["user_id"].unique())
+        n_user = max(rating_logs_df["user_id"].unique()) + 1
         # TODO: ↓n_item = 0始まりのitem_idの最後尾 + 1() これは現実的なんだろうか...?
         if n_item is None:
             n_item = max(rating_logs_df["item_id"].unique()) + 1
@@ -69,46 +61,30 @@ class MatrixFactrization:
         """ "user_factor(user latent matrix)とitem_factor(item latent matrix)をInitialize
         行数 = n_factor, 各列がユーザベクトルとアイテムベクトル
         """
-        user_factor_initialized = np.random.normal(
-            size=(self.n_factor, self.n_user)
-        ).astype(np.float32)
-        item_factor_initialized = np.random.normal(
-            size=(self.n_factor, self.n_item)
-        ).astype(np.float32)
+        user_factor_initialized = np.random.normal(size=(self.n_factor, self.n_user)).astype(np.float32)
+        item_factor_initialized = np.random.normal(size=(self.n_factor, self.n_item)).astype(np.float32)
         return user_factor_initialized, item_factor_initialized
 
-    def _collect_rating_logs_each_user(
-        self, rating_logs_df: pd.DataFrame
-    ) -> Dict[int, IndexRatingSet]:
+    def _collect_rating_logs_each_user(self, rating_logs_df: pd.DataFrame) -> Dict[int, IndexRatingSet]:
         """パラメータ更新時にアクセスしやすいように、
         各userに対する、Rating Matrixにおける非ゼロ要素のitemsとratingsを取得
         """
         user_id_and_item_ratings_mapping = {
             user_id: item_rating_set
             for user_id, item_rating_set in rating_logs_df.groupby("user_id")
-            .apply(
-                lambda x: IndexRatingSet(
-                    indices=x["item_id"].to_list(), ratings=x["rating"].to_list()
-                )
-            )
+            .apply(lambda x: IndexRatingSet(indices=x["item_id"].to_list(), ratings=x["rating"].to_list()))
             .items()
         }
         return user_id_and_item_ratings_mapping
 
-    def _collect_rating_logs_each_item(
-        self, rating_logs_df: pd.DataFrame
-    ) -> Dict[int, IndexRatingSet]:
+    def _collect_rating_logs_each_item(self, rating_logs_df: pd.DataFrame) -> Dict[int, IndexRatingSet]:
         """パラメータ更新時にアクセスしやすいように、各itemに関するrating_logsを整理しておく.
         返り値は、「item_id: Rating Matrixにおける非ゼロ要素のuser_idsとratings」のmapping dict
         """
         item_id_and_user_ratings_mapping = {
             item_id: users_ratings_set
             for item_id, users_ratings_set in rating_logs_df.groupby("item_id")
-            .apply(
-                lambda x: IndexRatingSet(
-                    indices=x["user_id"].to_list(), ratings=x["rating"].to_list()
-                )
-            )
+            .apply(lambda x: IndexRatingSet(indices=x["user_id"].to_list(), ratings=x["rating"].to_list()))
             .items()
         }
         return item_id_and_user_ratings_mapping
@@ -138,6 +114,8 @@ class MatrixFactrization:
         Args:
             users (List[int]): 評価値を予測したいユーザidのlist
             items (List[int]): 評価値を予測したいアイテムidのlist
+        return:
+            r\hatのリスト
         """
         ratings_hat = []
         for user_id, item_i in zip(user_ids, item_ids):
@@ -198,29 +176,35 @@ class MatrixFactrization:
             self.item_factor[:, item_idx] = np.linalg.solve(a, b)
 
     @property
-    def item_latent_vectors(self) -> np.ndarray:
-        """各行がlatent vectorになるように変換して返す"""
-        # item_vector_ndarrays = [
-        #     np.array(item_vector) for item_vector in item_vector_list
-        # ]
-        # return item_vector_ndarrays
+    def item_latent_factor(self) -> np.ndarray:
+        """各行がlatent vectorになるように変換して、行列として返す"""
         return self.item_factor.transpose()
 
     @property
-    def user_latent_vectors(self) -> np.ndarray:
-        """各行がlatent vectorになるように変換して返す"""
-        # user_vector_ndarrays = [
-        #     np.array(user_vector) for user_vector in user_vector_list
-        # ]
-        # return user_vector_ndarrays
-        user_vector_list = self.user_factor.transpose()
+    def user_latent_factor(self) -> np.ndarray:
+        """各行がlatent vectorになるように変換して、行列として返す"""
+        return self.user_factor.transpose()
+
+    def get_user_latent_vectors(self, user_ids: List[int]) -> Dict[int, np.ndarray]:
+        """user_id: user_latent_vectorのmapを返す"""
+        user_vectors = [np.array(user_vector) for user_vector in self.user_latent_factor.tolist()]
+        return {user_id: user_vector for user_id, user_vector in enumerate(user_vectors) if user_id in user_ids}
+
+    def get_item_latent_vectors(self, item_ids: List[int]) -> Dict[int, np.ndarray]:
+        """item_id: item_latent_vectorのmapを返す"""
+        item_vectors = [np.array(user_vector) for user_vector in self.item_latent_factor.tolist()]
+        return {item_id: item_vector for item_id, item_vector in enumerate(item_vectors) if item_id in item_ids}
 
 
 if __name__ == "__main__":
     rating_logs_sample = [
-        RatingLog(user_id=0, item_id=1, rating=2.0),
+        RatingLog(user_id=0, item_id=0, rating=2.0),
         RatingLog(user_id=1, item_id=1, rating=5.0),
         RatingLog(user_id=3, item_id=3, rating=3.0),
-        RatingLog(user_id=4, item_id=2, rating=1.0),
+        RatingLog(user_id=4, item_id=1, rating=5.0),
+        RatingLog(user_id=1, item_id=3, rating=1.0),
     ]
-    mf_obj = MatrixFactrization(rating_logs_sample)
+    mf_obj = MatrixFactrization(rating_logs_sample, n_factor=10)
+    mf_obj.fit(n_trial=20, document_vectors=None)
+    print(mf_obj.get_user_latent_vectors(user_ids=[1, 4]))
+    print(mf_obj.predict(user_ids=[1, 4, 3], item_ids=[3, 3, 3]))

@@ -1,6 +1,6 @@
-import torch
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import numpy as np
+import torch
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 
 
 def create_data_loaders(
@@ -33,8 +33,7 @@ def create_data_loaders(
     print(train_labels[:10, :])
     # Convert data type to torch.Tensor
     train_inputs, val_inputs, train_labels, val_labels = tuple(
-        torch.tensor(data)
-        for data in [train_inputs, val_inputs, train_labels, val_labels]
+        torch.tensor(data) for data in [train_inputs, val_inputs, train_labels, val_labels]
     )
 
     # Create DataLoader for training data
@@ -42,9 +41,7 @@ def create_data_loaders(
     train_data = TensorDataset(train_inputs, train_labels)
     train_sampler = RandomSampler(train_data)
     # DataLoaderオブジェクトのInitialize
-    train_dataloader = DataLoader(
-        train_data, sampler=train_sampler, batch_size=batch_size
-    )
+    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size)
 
     # Create DataLoader for validation data
     # DatasetオブジェクトのInitialize
@@ -54,3 +51,14 @@ def create_data_loaders(
     val_dataloader = DataLoader(val_data, sampler=val_sampler, batch_size=batch_size)
 
     return train_dataloader, val_dataloader
+
+
+def create_dataloader(inputs: np.ndarray, outputs: np.ndarray, batch_size: int) -> DataLoader:
+    # Convert data type to torch.Tensor
+    inputs_tensor = torch.tensor(inputs)
+    outputs_tensor = torch.tensor(outputs)
+    # Initialize Dataset object
+    dataset_obj = TensorDataset(inputs_tensor, outputs_tensor)
+    sampler_obj = RandomSampler(dataset_obj)
+    # Initialize DataLoader object
+    return DataLoader(dataset_obj, sampler=sampler_obj, batch_size=batch_size)
