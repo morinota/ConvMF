@@ -37,8 +37,8 @@ def train_convmf(
 
 
 def main():
-    rating_log_reader = RatingLogReader(ratings_csv_path=MyConfig.ratings_path)
-    rating_logs = rating_log_reader.load()
+    rating_log_reader = RatingLogReader()
+    rating_logs = rating_log_reader.load(rating_csv_path=MyConfig.ratings_path)
     print(len(rating_logs))
 
     max_sentence_length = 300  # 300 token(word)

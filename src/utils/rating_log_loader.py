@@ -9,11 +9,11 @@ from src.utils.time_checker import TimeChecker
 
 
 class RatingLogReader:
-    def __init__(self, ratings_csv_path: str) -> None:
-        self.ratings_csv_path = ratings_csv_path
+    def __init__(self) -> None:
+        pass
 
-    def load(self) -> List[RatingLog]:
-        ratings_df = pd.read_csv(self.ratings_csv_path).rename(
+    def load(self, rating_csv_path: str) -> List[RatingLog]:
+        ratings_df = pd.read_csv(rating_csv_path).rename(
             columns={"user": "user_id", "movie": "item_id", "rating": "rating"},
         )
         ratings_df["user_id"] = ratings_df["user_id"].astype(np.int32)
@@ -23,7 +23,6 @@ class RatingLogReader:
         self._print_rating_logs_info(ratings_df)
 
         # DataFrameからRatingDataに型変換してReturn。
-
         return self._convert_from_df_to_rating_data(ratings_df)
 
     def _print_rating_logs_info(self, ratings_df: pd.DataFrame) -> None:
