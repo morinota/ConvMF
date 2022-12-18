@@ -1,6 +1,11 @@
+from typing import Dict, Tuple
+
 import pandas as pd
 
 from src.config import MyConfig
+
+STORY_COL = "story"
+CATEGORY_COL = "category"
 
 
 def read_parquet_articles(parquet_path: str) -> pd.DataFrame:
@@ -14,8 +19,10 @@ def read_parquet_articles(parquet_path: str) -> pd.DataFrame:
     - title:
     - url:
     - publisher:
-    - category:
-    - story:
+    - category:ニュース項目のカテゴリ。 次のいずれか.
+        (-- b : ビジネス -- t : 科学技術 -- e : エンターテイメント
+        -- m : 健康)
+    - story: 記事で取り上げるニュース記事の英数字の ID
     - hostname:
     - timestamp:
     - main_content:
@@ -26,32 +33,59 @@ def read_parquet_articles(parquet_path: str) -> pd.DataFrame:
     # articles_df = articles_df[articles_df.main_content.notna()]
 
     # Add column based on title, ex) extract 食物設計 from 【食物設計（下）】
-    if "story" not in articles_df.columns:
-        articles_df["story"] = articles_df.title.str.extract("【(.*?)[（|】]")
+    if STORY_COL not in articles_df.columns:
+        articles_df[STORY_COL] = articles_df.title.str.extract("【(.*?)[（|】]")
 
     return articles_df
 
 
-def get_valid_story_label(article_df: pd.DataFrame) -> pd.DataFrame:
-    pass
+def get_valid_story_label(article_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[int, str]]:
+    """# get valid story(テキストのより細かい分類ラベル)"""
+    story_value_counts = article_df[STORY_COL].value_counts()
+    story_indices = article_df[STORY_COL].isin(
+        values=story_value_counts[story_value_counts > 0].index,
+    )
+    article_df["label_story_valid"] = 0
+    article_df.loc[story_indices, "label_story_valid"] = 1
+
+    article_df["label_story"], label_list = pd.factorize(article_df[STORY_COL])  # カテゴリをintにencode
+    label_idx_mapping = {idx: label for idx, label in enumerate(label_list)}
+    return article_df, label_idx_mapping
 
 
-def get_valid_category_label(article_df: pd.DataFrame) -> pd.DataFrame:
-    pass
+def get_valid_category_label(article_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[int, str]]:
+    """# get valid category(テキストのよりラフな分類ラベル)"""
+    category_value_counts = article_df[CATEGORY_COL].value_counts()
+    category_indices = article_df[CATEGORY_COL].isin(
+        values=category_value_counts[category_value_counts > 0].index,
+    )
+    article_df[f"label_category_valid"] = 0
+    article_df.loc[category_indices, "label_category_valid"] = 1
+    article_df["label_category"], label_list = pd.factorize(article_df[CATEGORY_COL])  # カテゴリをintにencode
+    label_idx_mapping = {idx: label for idx, label in enumerate(label_list)}
+
+    return article_df, label_idx_mapping
 
 
 def main():
     article_df = read_parquet_articles(MyConfig.uci_news_data_path)
     print(article_df.columns)
-    # article idの昇順でソート
-    article_df = article_df.sort_values(by="id")
+
+    article_df = article_df.sort_values(by="id")  # article idの昇順でソート
+
+    article_df, label_idx_story_mapping = get_valid_story_label(article_df)
     print(article_df.head())
+    print(len(label_idx_story_mapping))
 
-    # get valid story(テキストのより細かい分類ラベル)
-    article_df = get_valid_story_label(article_df)
+    article_df, label_idx_category_mapping = get_valid_category_label(article_df)
+    print(article_df.head())
+    print(len(label_idx_category_mapping))
 
-    # get valid category(テキストのよりラフな分類ラベル)
-    article_df = get_valid_category_label(article_df)
+    # テキスト(article_df[main_contents])をtokenize
+
+    # Scikit learn’s Count Vectorizerにより、tonenizeされたテキストをbinary ベクトル化
+
+    # denoizing autoencoder による学習(anchorのテキストとラベルを渡せば良い)
 
 
 if __name__ == "__main__":
