@@ -22,14 +22,25 @@ class BatchHardStrategy:
         labels: Tensor,
         embeddings: Tensor,
     ) -> Tensor:
-        pairwise_distance_matrix = calc_pairwise_distances(embeddings, squared=self.squared)
+        """Build the triplet loss over a batch of embeddings.
+
+        For each anchor, we get the hardest positive and hardest negative to form a triplet.
+
+        Args:
+            labels: labels of the batch, of size (batch_size,)
+            embeddings: tensor of shape (batch_size, embed_dim)
+
+        Returns:
+            triplet_loss: scalar tensor containing the triplet loss
+        """
+        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
 
         hardest_positive_dists = self._extract_hardest_positives(pairwise_distance_matrix, labels)
 
         hardest_negative_dists = self._extract_hardest_negatives(pairwise_distance_matrix, labels)
 
-        # Combine biggest d(a, p) and smallest d(a, n) into final triplet loss
         init_triplet_loss = hardest_positive_dists - hardest_negative_dists + self.margin
+
         triplet_loss = torch.max(
             input=init_triplet_loss,
             other=torch.zeros(size=init_triplet_loss.shape),

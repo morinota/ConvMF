@@ -140,10 +140,383 @@ $i$と$j$が同じラベルを持ち、$i$と$k$が異なるラベルであれ�
   - 最もhardなnegative = (i.e. 距離 $d(a,p)$が最小)
   - 即ち↑の方法で選択されたtripletは、**各anchorにおいて最もhardな(損失が大きい)triplet**です。
 - batch hard storategyで生成(選択)されるtripletの数は、$B=PK$個です。
+- 最終的には$B=PK$個のTriplet Lossを平均化したものを用います。
 
 なお上述した論文によると、batch hard storategyが最も良い性能を発揮するとの事です。ただこの結論は**データセットに依存**するものであり、開発におけるTriplet Miningの戦略は、**実際のデータセットを用いてパフォーマンスを比較することによって決定されるべき**ものであるとも述べています。
 
 # Online Triplet Mining をPytorchで実装してみた
+
+## 埋め込みベクトル間の距離を効率的に算出する
+
+Triplet Lossの値は埋め込みベクトルの距離 $d(h_a, h_p)$ と $d(h_a, h_n)$ に依存するので、まず、**埋め込みベクトル達の距離行列を効率的に計算**する必要があります。ユークリッドノルムと二乗ユークリッドノルムについて、 `calc_pairwise_distances` 関数として実装します。
+
+```python
+import torch
+from torch import Tensor
+
+
+def calc_pairwise_distances(embeddings: Tensor, is_squared: bool = False) -> Tensor:
+    """compute distances between all the embeddings.
+
+    Parameters
+    ----------
+    embeddings : Tensor
+        tensor of shape (batch_size, embed_dim)
+    is_squared : bool, optional
+        If true, output is the pairwise squared euclidean distance matrix.
+        If false, output is the pairwise euclidean distance matrix.,
+        by default False
+
+    Returns
+    -------
+    Tensor
+        pairwise_distances: tensor of shape (batch_size, batch_size)
+        行列の各要素に、2つのembedding vector間の距離が入っている.
+    """
+    dot_product_matrix = torch.matmul(
+        input=embeddings,
+        other=embeddings.t(),
+    )  # ->各ベクトル間の内積を要素とした行列
+    squared_embedding_norms = dot_product_matrix.diag().unsqueeze(dim=1)  # 対角要素(=各ベクトルの長さの二乗)を取り出す
+
+    # euclidean distance(p, q) = \sqrt{|p|^2 + |q|^2 - 2 p*q}
+    euclidean_distances = squared_embedding_norms + squared_embedding_norms.t() - 2 * dot_product_matrix  # ユークリッド距離を算出
+
+    if not is_squared:
+        return torch.sqrt(euclidean_distances)
+
+    return euclidean_distances
+```
+
+## valid Triplet/invalid tripletを判定させる
+
+続いて、各Triplet(バッチ内の任意の3つの組み合わせ)に対して、valid(有効な) tripletか否かを判定する処理を`TripletValidetor`クラスに実装します。
+
+`get_valid_mask`メソッドでは、引数でバッチ内の全てのデータのラベルのTensor(batch_size*1)を受け取り、返り値として有効な(valid) triplet(i,j,k)->True, 無効な(invalid) triplet(i,j,k)->FalseとなるようなTensor(batch_size*batch_size\*batch_size)を返します。
+最終的にはこのbool Tensorを距離行列に乗じたりする事で、invalid tripletを取り除くmaskとしての使い方を想定しています。
+
+```python
+class TripletValidetor:
+    """tripletが有効か無効かを判定する為のクラス"""
+
+    def __init__(self) -> None:
+        pass
+
+    def get_valid_mask(self, labels: Tensor) -> Tensor:
+        """有効な(valid) triplet(i,j,k)->True, 無効な(invalid) triplet(i,j,k)->Falseとなるような
+        Tensor(batch_size*batch_size*batch_size)を作成して返す.
+        Return a 3D mask where mask[i, j, k]
+            is True iff the triplet (i, j, k) is valid.
+
+        A triplet (i, j, k) is valid if:有効なtripletである条件は以下の2つ:
+            - i, j, k are distinct
+            - labels[i] == labels[j] and labels[i] != labels[k]
+
+        Parameters
+        ----------
+        labels : Tensor
+            int32 `Tensor` with shape [batch_size]
+
+        return:Tensor
+            shape = (batch_size, batch_size, batch_size)
+            mask[i, j, k] は $(i,j,k)$ が有効なトリプレットであれば真
+        """
+        # 条件1:Check that i, j and k are distinct  独立したindicesか否か
+        is_not_distinct_matrix = torch.eye(n=labels.size(0)).bool()  # labelsのサイズに応じた単位行列を生成し、bool型にキャスト
+        is_distinct_matrix = ~is_not_distinct_matrix  # boolを反転する
+
+        i_not_equal_j = is_distinct_matrix.unsqueeze(dim=2)
+        i_not_equal_k = is_distinct_matrix.unsqueeze(dim=1)
+        j_not_equal_k = is_distinct_matrix.unsqueeze(dim=0)
+        is_distinct_triplet_tensor = i_not_equal_j & i_not_equal_k & j_not_equal_k
+
+        # 条件2: Check if labels[i] == labels[j] and labels[i] != labels[k]
+        is_label_equal_matrix = labels.unsqueeze(0) == labels.unsqueeze(1)
+        i_equal_j = is_label_equal_matrix.unsqueeze(2)
+        i_equal_k = is_label_equal_matrix.unsqueeze(1)
+        is_valid_labels_triplet_tensor = i_equal_j & (~i_equal_k)
+
+        return is_distinct_triplet_tensor & is_valid_labels_triplet_tensor
+
+    def get_anchor_positive_mask(self, labels: Tensor) -> Tensor:
+        """各要素がboolの2次元のTensorを返す. anchor * positiveのペアならTrue, それ以外はFalse
+        Return a 2D mask where mask[a, p] is True,
+        if a and p are distinct and have same label.
+
+        Parameters
+        ----------
+        labels : Tensor
+            with shape [batch_size]
+
+        Returns
+        -------
+        Tensor
+            bool Tensor with shape [batch_size, batch_size]
+        """
+        # 条件1: iとjがdistinct(独立か)を確認する
+        is_not_distinct_matrix = torch.eye(n=labels.size(0)).bool()
+        is_distinct_matrix = ~is_not_distinct_matrix  # boolを反転する
+
+        # 条件2: labels[i]とlabels[j]が一致しているか否かを確認する
+        is_label_equal_matrix = labels.unsqueeze(0) == labels.unsqueeze(1)
+
+        # 条件1と条件2をcombineして返す
+        return is_distinct_matrix & is_label_equal_matrix
+
+    def get_anchor_negative_mask(self, labels: Tensor) -> Tensor:
+        """各要素がboolの2次元のTensorを返す. anchor * negativeのペアならTrue, それ以外はFalse
+        Return a 2D mask where mask[a, n] is True,
+        if a and n have distinct labels.
+
+        Parameters
+        ----------
+        labels : Tensor
+            with shape [batch_size]
+
+        Returns
+        -------
+        Tensor
+            bool Tensor with shape [batch_size, batch_size]
+        """
+        # 条件1: iとjがdistinct(独立か)を確認する
+        is_not_distinct_matrix = torch.eye(n=labels.size(0)).bool()
+        is_distinct_matrix = ~is_not_distinct_matrix  # boolを反転する
+
+        # 条件2: labels[i]とlabels[j]が一致していないか否かを確認する
+        is_not_label_equal_matrix = labels.unsqueeze(0) != labels.unsqueeze(1)
+
+        # 条件1と条件2をcombineして返す
+        return is_distinct_matrix & is_not_label_equal_matrix
+```
+
+## batch all storategyを実装
+
+では、上で定義した`calc_pairwise_distances`関数と`TripletValidetor`クラスを用いて、`BatchAllStrategy`クラスを定義します。
+使い方としては、Pytorchによる`train`関数の中で、1 batch毎のdataset(embeddingベクトル & 対応するラベル)を取得した後、`BatchAllStrategy`オブジェクトを初期化、`calc_triplet_loss()`メソッドにembeddingベクトル & 対応するラベルを入力して出力としてtriplet lossを取得します。
+取得したtriplet lossを損失関数としてBack Propagationする事で、モデルを更新します。
+
+```python
+from typing import Tuple
+
+import numpy as np
+import torch
+from torch import Tensor
+
+from src.triplet_mining.pairwise_distances import calc_pairwise_distances
+from src.triplet_mining.valid_triplet import TripletValidetor
+
+
+class BatchAllStrategy:
+    def __init__(
+        self,
+        margin: float,
+        squared: bool = False,
+    ) -> None:
+        """
+        - margin : float
+            margin for triplet loss
+        - squared : bool, optional
+            If true, output is the pairwise squared euclidean distance matrix.
+            If false, output is the pairwise euclidean distance matrix.,
+            by default False
+        """
+        self.margin = margin
+        self.squared = squared
+        self.triplet_validetor = TripletValidetor()
+
+    def calc_triplet_loss(
+        self,
+        labels: Tensor,
+        embeddings: Tensor,
+    ) -> Tuple[Tensor, Tensor]:
+        """Build the triplet loss over a batch of embeddings.
+        We generate all the valid triplets and average the loss over the positive ones.
+
+        Parameters
+        ----------
+        labels : Tensor
+            labels of the batch, of size (batch_size,)
+        embeddings : Tensor
+            tensor of shape (batch_size, embed_dim)
+
+
+        Returns
+        -------
+        Tuple[Tensor, Tensor]
+            triplet_loss: scalar tensor containing the triplet loss
+            fraction_positive_triplets: scalar tensor containing 有効なtripletに対するpositive(i.e. not easy) tripletsの割合
+        """
+        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
+        triplet_loss = self._initialize_triplet_loss(pairwise_distance_matrix)
+
+        valid_triplet_mask = self.triplet_validetor.get_valid_mask(labels)
+
+        triplet_loss = self._remove_invalid_triplets(triplet_loss, valid_triplet_mask)
+
+        triplet_loss = self._remove_negative_loss(triplet_loss)
+
+        num_positive_triplets = self._count_positive_triplet(triplet_loss)
+
+        num_valid_triplets = torch.sum(valid_triplet_mask)
+        fraction_positive_triplets = num_positive_triplets / (num_valid_triplets + 1e-16)
+        # -> 有効なtripletに対するnot easy tripletsの割合
+
+        # Get final mean triplet loss over the positive valid triplets
+        triplet_loss_mean = torch.sum(triplet_loss) / (num_positive_triplets + 1e-16)
+
+        return triplet_loss_mean, fraction_positive_triplets
+
+    def _initialize_triplet_loss(self, pairwise_distance_matrix: Tensor) -> Tensor:
+        """triplet_loss(batch_size*batch_size*batch_sizeの形のTensor)の初期値を作る.
+        各要素がtriplet_loss(i,j,k),
+        一旦、全てのi,j,kの組み合わせでtriplet_lossを計算する
+        """
+        anchor_positive_dist = pairwise_distance_matrix.unsqueeze(dim=2)
+        # -> (batch_size, batch_size, 1)
+        anchor_negative_dist = pairwise_distance_matrix.unsqueeze(dim=1)
+        # -> (batch_size, 1, batch_size)
+
+        # Compute a 3D tensor of size (batch_size, batch_size, batch_size)
+        # triplet_loss[i, j, k] will contain the triplet loss of anchor=i, positive=j, negative=k
+        # Uses broadcasting where the 1st argument has shape (batch_size, batch_size, 1)
+        # and the 2nd (batch_size, 1, batch_size)
+        return anchor_positive_dist - anchor_negative_dist + self.margin
+
+    def _remove_invalid_triplets(self, triplet_loss: Tensor, valid_triplet_mask: Tensor) -> Tensor:
+        """triplet lossのTensorから、有効なtripletのlossのみ残し、無効なtripletのlossをゼロにする"""
+        masks_float = valid_triplet_mask.float()  # True->1.0, False->0.0
+        return triplet_loss * masks_float  # アダマール積(要素積)を取る
+
+    def _remove_negative_loss(self, triplet_loss: Tensor) -> Tensor:
+        """triplet lossのTensorから、negative(easy) triplet lossをゼロにし、positive(hard)なlossの要素のみ残す.
+        negative(easy)なtriplet loss= triplet lossが0未満の要素.
+        Remove negative losses (i.e. the easy triplets).
+        """
+        return torch.max(
+            input=triplet_loss,
+            other=torch.zeros(size=triplet_loss.shape),
+        )
+
+    def _count_positive_triplet(self, triplet_loss: Tensor) -> Tensor:
+        """triplet_lossのTensorの中で、positive(i.e. not easy) triplet lossの要素数をカウントして返す
+        Count number of positive triplets (where triplet_loss > 0)
+        """
+        valid_triplets = torch.gt(input=triplet_loss, other=1e-16)
+        valid_triplets = valid_triplets.float()  # positive triplet->1.0, negative triplet->0.0
+        return torch.sum(valid_triplets)
+```
+
+## batch hard storategyを実装
+
+`BatchAllStrategy`と同様に、`calc_pairwise_distances`関数と`TripletValidetor`クラスを用いて、`BatchHardStrategy`クラスを定義します。
+
+```python
+class BatchHardStrategy:
+    def __init__(
+        self,
+        margin: float,
+        squared: bool = False,
+    ) -> None:
+        self.margin = margin
+        self.squared = squared
+        self.triplet_validetor = TripletValidetor()
+
+    def calc_triplet_loss(
+        self,
+        labels: Tensor,
+        embeddings: Tensor,
+    ) -> Tensor:
+        """Build the triplet loss over a batch of embeddings.
+
+        For each anchor, we get the hardest positive and hardest negative to form a triplet.
+
+        Args:
+            labels: labels of the batch, of size (batch_size,)
+            embeddings: tensor of shape (batch_size, embed_dim)
+
+        Returns:
+            triplet_loss: scalar tensor containing the triplet loss
+        """
+        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
+
+        hardest_positive_dists = self._extract_hardest_positives(pairwise_distance_matrix, labels)
+
+        hardest_negative_dists = self._extract_hardest_negatives(pairwise_distance_matrix, labels)
+
+        init_triplet_loss = hardest_positive_dists - hardest_negative_dists + self.margin
+
+        triplet_loss = torch.max(
+            input=init_triplet_loss,
+            other=torch.zeros(size=init_triplet_loss.shape),
+        )  # easy tripletを取り除く.
+
+        # Get final mean triplet loss
+        triplet_loss_mean = torch.mean(triplet_loss)
+        return triplet_loss_mean
+
+    def _extract_hardest_positives(
+        self,
+        pairwise_distance_matrix: Tensor,
+        labels: Tensor,
+    ) -> Tensor:
+        """各anchorに対して、hardest positiveを見つける.
+        For each anchor, get the hardest positive.
+        1. 有効なペア(anchor,positive)の2次元マスクを取得する
+        2. 修正(有効なペアのみ考慮)された、距離行列の各行に対する最大距離を取る
+        返り値は、Tensor with shape (batch_size, 1)
+        """
+        is_anchor_positive_matrix = self.triplet_validetor.get_anchor_positive_mask(
+            labels,
+        )
+        is_anchor_positive_matrix_binary = is_anchor_positive_matrix.float()
+
+        pairwise_dist_matrix_masked = torch.mul(
+            pairwise_distance_matrix,
+            is_anchor_positive_matrix_binary,
+        )  # アダマール積(要素毎の積)
+
+        hardest_positive_dists, _ = pairwise_dist_matrix_masked.max(
+            dim=1,  # dim番目の軸に沿って最大値を取得
+            keepdim=True,  # 2次元Tensorを保つ
+        )  # ->Tensor with shape (batch_size, 1)
+
+        return hardest_positive_dists
+
+    def _extract_hardest_negatives(
+        self,
+        pairwise_distance_matrix: Tensor,
+        labels: Tensor,
+    ) -> Tensor:
+        """各anchorに対して、hardest negativeを見つける.
+        For each anchor, get the hardest negative.
+        1. 有効なペア(anchor, negative)の2次元マスクを取得する.
+        2. 無効なペアを考慮から取り除く為に、無効なペアのdistanceに各行の最大値を足す.
+        3. 距離行列の各行に対する最小距離を取る
+        返り値は、Tensor with shape (batch_size, 1)
+        """
+        is_anchor_negative_matrix = self.triplet_validetor.get_anchor_negative_mask(
+            labels,
+        )
+        is_anchor_negative_matrix_binary = is_anchor_negative_matrix.float()
+
+        max_dist_each_rows, _ = pairwise_distance_matrix.max(
+            dim=1,
+            keepdim=True,
+        )  # 各行の最大値を取得
+        pairwise_dist_matrix_masked = pairwise_distance_matrix + (
+            max_dist_each_rows * (1.0 - is_anchor_negative_matrix_binary)
+        )  # is_anchor_negative=Falseの要素にmax_distを足す
+
+        hardest_negative_dists, _ = pairwise_dist_matrix_masked.min(dim=1, keepdim=True)
+
+        return hardest_negative_dists
+```
+
+## テストコード
+
+# おわりに
+
+本記事では、pytorchでonline triplet miningの2つの戦略をpytorchで実装してみました。
 
 # 参考
 

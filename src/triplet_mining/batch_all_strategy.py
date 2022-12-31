@@ -48,7 +48,7 @@ class BatchAllStrategy:
             triplet_loss: scalar tensor containing the triplet loss
             fraction_positive_triplets: scalar tensor containing 有効なtripletに対するpositive(i.e. not easy) tripletsの割合
         """
-        pairwise_distance_matrix = calc_pairwise_distances(embeddings, squared=self.squared)
+        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
         triplet_loss = self._initialize_triplet_loss(pairwise_distance_matrix)
 
         valid_triplet_mask = self.triplet_validetor.get_valid_mask(labels)
