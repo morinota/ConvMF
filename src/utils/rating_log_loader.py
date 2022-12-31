@@ -1,5 +1,5 @@
 import time
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -12,8 +12,8 @@ class RatingLogReader:
     def __init__(self) -> None:
         pass
 
-    def load(self, rating_csv_path: str) -> List[RatingLog]:
-        ratings_df = pd.read_csv(rating_csv_path).rename(
+    def load(self, rating_csv_path: str, nrows: Optional[int] = None) -> List[RatingLog]:
+        ratings_df = pd.read_csv(rating_csv_path, nrows=nrows).rename(
             columns={"user": "user_id", "movie": "item_id", "rating": "rating"},
         )
         ratings_df["user_id"] = ratings_df["user_id"].astype(np.int32)

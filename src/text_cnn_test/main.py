@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 
 from src.config import MyConfig
 from src.dataclasses.item_description import ItemDescription
-from src.model.model_cnn_nlp import initilize_cnn_nlp_model
+from src.model.cnn_nlp_model import initilize_cnn_nlp_model
 from src.utils.item_description_preparer import ItemDescrptionPreparer
 from src.utils.word_vector_preparer import WordEmbeddingVector
 from utils.dataloader import create_data_loaders

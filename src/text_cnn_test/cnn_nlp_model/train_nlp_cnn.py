@@ -11,7 +11,7 @@ import torch.optim as optim
 from torch import Tensor
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 
-from src.model.model_cnn_nlp import CnnNlpModel
+from src.model.cnn_nlp_model import CnnNlpModel
 
 # Specify loss function
 loss_fn = nn.MSELoss()

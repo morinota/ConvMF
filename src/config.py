@@ -3,7 +3,7 @@ import os
 
 class MyConfig:
     data_dir = r"data"
-    # 元データ
+    # movie_lensの元データ
     movie_len_dir = os.path.join(data_dir, "ml-10M100K")
     # movie_len_dir = os.path.join(data_dir, 'ml-1m')
     tmdb_movies_path = os.path.join(data_dir, "tmdb_5000_movies.csv")
@@ -14,3 +14,6 @@ class MyConfig:
     descriptions_path = os.path.join(data_dir, "descriptions.csv")
 
     fast_text_path = os.path.join(data_dir, r"fastText\crawl-300d-2M.vec")
+
+    # UCI news aggregator dataset
+    uci_news_data_path = os.path.join(data_dir, "uci_news/uci_news.snappy.parquet")

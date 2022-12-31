@@ -1,15 +1,18 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
 from torch import Tensor
 
+from src.config import MyConfig
 from src.dataclasses.item_description import ItemDescription
 from src.dataclasses.rating_data import RatingLog
 from src.model.cnn_nlp_model import CnnNlpModel, initilize_cnn_nlp_model
 from src.model.matrix_factorization import MatrixFactrization
 from src.text_cnn_test.cnn_nlp_model.train_nlp_cnn import train
 from src.text_cnn_test.utils.dataloader import create_dataloader
+from src.utils.item_description_preparer import ItemDescrptionPreparer
+from src.utils.rating_log_loader import RatingLogReader
 from src.utils.word_vector_preparer import WordEmbeddingVector
 
 
@@ -18,7 +21,7 @@ class ConvMF(object):
         self,
         rating_logs: List[RatingLog],
         item_descriptions: List[ItemDescription],
-        embedding_vectors: WordEmbeddingVector,
+        embedding_vectors: Optional[WordEmbeddingVector] = None,
         num_filters: List[int] = [100, 100, 100],
         learning_rate: float = 0.01,
         filter_sizes: List[int] = [3, 4, 5],  # 窓関数の設定,
@@ -126,3 +129,29 @@ class ConvMF(object):
     def get_item_latent_vectors(self, item_ids: List[int]) -> Dict[int, np.ndarray]:
         """item_id: item_latent_vectorのmapを返す"""
         return self.mf_obj.get_user_latent_vectors(item_ids)
+
+
+if __name__ == "__main__":
+    rating_log_reader = RatingLogReader()
+    rating_logs = rating_log_reader.load(rating_csv_path=MyConfig.ratings_path, nrows=1000)
+
+    max_sentence_length = 300  # 300 token(word)
+    item_description_prepaper = ItemDescrptionPreparer(MyConfig.descriptions_path)
+    item_descriptions = item_description_prepaper.load(max_sentence_length)
+    token2idxs_mapping = item_description_prepaper.word2idx_mapping
+    token_indices_array = ItemDescription.merge_token_indices_of_descriptions(
+        item_descriptions,
+    )
+
+    embedding_vectors = WordEmbeddingVector.load_pretrained_vectors(
+        token2idxs_mapping,
+        MyConfig.fast_text_path,
+        padding_word="<pad>",
+    )
+
+    convmf_obj = ConvMF(
+        rating_logs,
+        item_descriptions,
+        embedding_vectors,
+    )
+    convmf_obj.fit(batch_size=10, n_epoch_convmf=2)

@@ -1,41 +1,17 @@
+import random
+import time
+from typing import List, Optional, Tuple
 
-from typing import List, Iterator
-from torch import Tensor
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 import torch.optim as optim
-import random
-import time
-from torch.utils.data import (TensorDataset, DataLoader, RandomSampler,
-                              SequentialSampler)
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
 
-
-class CustomLoss(nn.Module):
-    def __init__(self, lambda_v: float, lambda_w: float) -> None:
-        super().__init__()
-        # 初期化処理
-        # self.param = ...
-        self.lambda_v = lambda_v
-        self.lambda_w = lambda_w
-
-    def forward(self, outputs: Tensor, targets: Tensor, parameters: Iterator[nn.Parameter]):
-        '''
-        outputs: 予測結果(ネットワークの出力)
-        targets: 正解
-        parameters: CNNモデルのパラメータ
-        '''
-        # ロスの計算を何かしら書く
-        # loss = torch.mean(outputs - targets)
-        loss = (self.lambda_v/2) * ((targets - outputs)**2).sum()
-        # L2ノルムの２乗を損失関数に足す.
-        l2 = torch.tensor(0., requires_grad=True)
-        for w in parameters:
-            l2 = l2 + torch.norm(w)**2
-        loss = loss + (self.lambda_w/2) * l2
-        # ロスの計算を返す
-        return loss
+from src.model.cnn_nlp_model import CnnNlpModel
+from src.model.loss_function import ConvMFLossFunc
 
 
 def set_seed(seed_value=42):
@@ -46,26 +22,45 @@ def set_seed(seed_value=42):
     torch.cuda.manual_seed_all(seed_value)
 
 
-# Specify loss function
-# loss_fn = nn.CrossEntropyLoss()
+def train(
+    model: CnnNlpModel,
+    optimizer: optim.Adadelta,
+    device: torch.device,
+    train_dataloader: DataLoader,
+    val_dataloader: Optional[DataLoader] = None,
+    epochs: int = 10,
+):
+    """Train the CNN_NLP model. 学習を終えたCNN_NLPオブジェクトを返す。
 
+    Parameters
+    ----------
+    model : nn.Module
+        CNN_NLPオブジェクト。
+    optimizer : optim.Adadelta
+        Optimizer
+    device : torch.device
+        'cuda' or 'cpu'
+    train_dataloader : DataLoader
+        学習用のDataLoader
+    val_dataloader : DataLoader, optional
+        検証用のDataLoader, by default None
+    epochs : int, optional
+        epoch数, by default 10
 
-def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
-          train_dataloader: DataLoader, val_dataloader: DataLoader = None,
-          epochs: int = 10
-          ):
-    """Train the CNN model."""
+    Returns
+    -------
+    学習を終えたCNN_NLPオブジェクト
+        CnnNlpModel
+    """
+    model.to(device)  # modelをdeviceに渡す
 
-    # 損失関数の定義
-    loss_fn = CustomLoss(lambda_v=0.01, lambda_w=0.1)
+    # 損失関数の定義ConvMFLossFunc
+    loss_function = ConvMFLossFunc(lambda_v=0.01, lambda_w=0.1)
 
     # Tracking best validation accuracy
-    best_accuracy = 0
     print("Start training...\n")
-    print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
-    print("-"*60)
 
-    for epoch_i in range(epochs):
+    for epoch_idx in range(epochs):
         # =======================================
         #               Training
         # =======================================
@@ -78,102 +73,130 @@ def train(model: nn.Module, optimizer: optim.Adadelta, device: torch.device,
         model.train()
 
         # バッチ学習
-        for step, batch in enumerate(train_dataloader):
-            b_input_ids, b_labels = tuple(t for t in batch)
+        for batch_idx, batch_dataset in enumerate(train_dataloader):
+            batch_X, batch_y = tuple(tensors for tensors in batch_dataset)
 
-            # ラベル側をキャストする(そのままだと何故かエラーが出るから)
-            b_labels: Tensor = b_labels.type(torch.LongTensor)
-            # Load batch to GPU
-            b_input_ids: Tensor = b_input_ids.to(device)
-            b_labels: Tensor = b_labels.to(device)
+            # データをGPUにわたす。
+            batch_X: Tensor = batch_X.to(device)
+            batch_y: Tensor = batch_y.to(device)
 
-            # Zero out any previously calculated gradients
-            model.zero_grad()  # 勾配の値を初期化(累積してく仕組みだから...)
+            # 1バッチ毎に勾配の値を初期化(累積してく仕組みだから...)
+            model.zero_grad()
 
             # Perform a forward pass. This will return logits.
-            logits = model(b_input_ids)
-            # Compute loss and accumulate the loss values
-            loss = loss_fn(input=logits, target=b_labels,
-                           parameters=model.parameters())
+            y_predicted = model(batch_X)
+            # 損失関数の値を計算
+            loss = loss_function(y_predicted, batch_y, parameters=model.parameters())
 
-            # 1エポックのloss関数の値を保存するために追加
+            # 1 epoch全体の損失関数の値を評価する為に、1 batch毎の値を累積していく.
             total_loss += loss.item()
 
             # Update parameters(パラメータを更新)
-            loss.backward()
-            optimizer.step()
+            loss.backward()  # 誤差逆伝播で勾配を取得
+            optimizer.step()  # 勾配を使ってパラメータ更新
 
-        # Calculate the average loss over the entire training data
+        # 1 epoch全体の損失関数の平均値を計算
         avg_train_loss = total_loss / len(train_dataloader)
 
         # =======================================
         #               Evaluation
         # =======================================
         # 1 epochの学習が終わる毎にEvaluation
-        if val_dataloader is not None:
-            # After the completion of each training epoch, measure the model's
-            # performance on our validation set.
-            val_loss, val_accuracy = evaluate(
-                model=model, val_dataloader=val_dataloader, device=device)
+        if val_dataloader is None:
+            continue
 
-            # Track the best accuracy
-            if val_accuracy > best_accuracy:
-                best_accuracy = val_accuracy
+        # After the completion of each training epoch, measure the model's
+        # performance on our validation set.
+        val_loss = _evaluate(
+            model=model,
+            val_dataloader=val_dataloader,
+            device=device,
+        )
 
-            # Print performance over the entire training data
-            time_elapsed = time.time() - t0_epoch
-            print(f"{epoch_i + 1:^7} | {avg_train_loss:^12.6f} | {val_loss:^10.6f} | {val_accuracy:^9.2f} | {time_elapsed:^9.2f}")
+        # Print performance over the entire training data
+        time_elapsed = time.time() - t0_epoch
+        print(f"the validation result of epoch {epoch_idx + 1:^7} is below.")
+        print(f"the values of loss function : train(average)={avg_train_loss:.6f}, valid={val_loss:.6f}")
 
     print("\n")
-    print(f"Training complete! Best accuracy: {best_accuracy:.2f}%.")
+    print(f"Training complete!")
 
-    # 学習したモデルを返す
-    return model
+    return model  # 学習済みのモデルを返す
 
 
-def evaluate(model: nn.Module, val_dataloader: DataLoader, device: torch.device):
+def _evaluate(
+    model: nn.Module,
+    val_dataloader: DataLoader,
+    device: torch.device,
+) -> float:
     """After the completion of each training epoch, measure the model's
     performance on our validation set.
     """
     # 損失関数の定義
-    loss_fn = CustomLoss(lambda_v=0.01, lambda_w=0.1)
+    loss_fn = ConvMFLossFunc(lambda_v=0.01, lambda_w=0.1)
 
     # Put the model into the evaluation mode. The dropout layers are disabled
     # during the test time.
     model.eval()
 
     # Tracking variables
-    val_accuracy = []
-    val_loss = []
+    val_loss_list = []
 
     # For each batch in our validation set...
-    for batch in val_dataloader:
-        b_input_ids, b_labels = tuple(t for t in batch)
-        # ラベル側をキャストする(そのままだと何故かエラーが出るから)
-        b_labels: Tensor = b_labels.type(torch.LongTensor)
+    for batch_datasets in val_dataloader:
+        batch_X, batch_y = tuple(tensors for tensors in batch_datasets)
         # Load batch to GPU
-        b_input_ids: Tensor = b_input_ids.to(device)
-        b_labels: Tensor = b_labels.to(device)
+        batch_X: Tensor = batch_X.to(device)
+        batch_y: Tensor = batch_y.to(device)
 
         # Compute logits
         with torch.no_grad():
-            logits = model(b_input_ids)
+            y_predicted = model(batch_X)
 
         # Compute loss
-        loss: Tensor = loss_fn(logits, b_labels)
-        val_loss.append(loss.item())
-
-        # Get the predictions
-        preds = torch.argmax(logits, dim=1).flatten()
-
-        # Calculate the accuracy rate
-        preds: Tensor
-        b_labels: Tensor
-        accuracy = (preds == b_labels).cpu().numpy().mean() * 100
-        val_accuracy.append(accuracy)
+        loss: Tensor = loss_fn(y_predicted, batch_y, model.parameters())
+        val_loss_list.append(loss.item())
 
     # Compute the average accuracy and loss over the validation set.
-    val_loss = np.mean(val_loss)
-    val_accuracy = np.mean(val_accuracy)
+    val_loss_mean = np.mean(val_loss_list)
 
-    return val_loss, val_accuracy
+    return val_loss_mean
+
+
+if __name__ == "__main__":
+    # 入力データ
+    x = torch.Tensor(
+        [
+            [0, 1, 2, 3, 4, 5],
+            [2, 1, 3, 4, 5, 0],
+        ]
+    ).long()  # LongTensor型に変換する(default はFloatTensor?)
+    y_true = torch.Tensor(
+        [
+            [0.5, 1.0, 2.0, 1.5, 1.8, 1.9, 1.0],
+            [0.8, 1.5, 2.1, 1.0, 1.0, 1.2, 1.8],
+        ]
+    ).float()
+    dataset = TensorDataset(x, y_true)
+    train_dataloader = DataLoader(dataset)
+    valid_dataloader = DataLoader(TensorDataset(x, y_true))
+
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    cnn_nlp_model = CnnNlpModel(
+        output_dimension=y_true.shape[1],
+        vocab_size=100,
+        embed_dimension=15,
+    )
+    optimizer = optim.Adadelta(
+        params=cnn_nlp_model.parameters(),  # 最適化対象
+        lr=0.01,  # parameter更新の学習率
+        rho=0.95,  # 移動指数平均の係数
+    )
+
+    cnn_nlp_model_trained = train(
+        model=cnn_nlp_model,
+        optimizer=optimizer,
+        device=device,
+        train_dataloader=train_dataloader,
+        val_dataloader=valid_dataloader,
+    )
