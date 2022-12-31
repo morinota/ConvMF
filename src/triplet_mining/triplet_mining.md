@@ -56,7 +56,7 @@ To formalise this requirement, the loss will be defined over triplets of embeddi
 - a positive of the same class as the anchor
 - a negative of a different class
 
-For some distance on the embedding space $d$, , the loss of a triplet $(a, p, n)$ is:
+For some distance on the embedding space $d$, the loss of a triplet $(a, p, n)$ is:
 
 $$
 L = \max(d(a,p) - d(a, n) + \text{margin}, 0)

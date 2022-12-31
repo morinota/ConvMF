@@ -2,9 +2,10 @@ from typing import Tuple
 
 import numpy as np
 import torch
-from pairwise_distances import calc_pairwise_distances
 from torch import Tensor
-from valid_triplet import TripletValidetor
+
+from src.triplet_mining.pairwise_distances import calc_pairwise_distances
+from src.triplet_mining.valid_triplet import TripletValidetor
 
 
 class BatchAllStrategy:
