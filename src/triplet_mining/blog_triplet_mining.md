@@ -5,6 +5,10 @@
 本記事は、Triplet Loss and Online Triplet Mining in TensorFlowを読んで**Triplet Miningが何たるか**の理解を深めるとともに、**PytorchでOnline Triplet Miningの実装を試みた**ものです:)
 ↑の技術記事は、Olivier MoindrotさんによるTriplet Loss, Triplet Miningの解説と、TensorflowによるTriplet Minignの実装例が紹介されています。
 
+ちなみに私がTriplet Loss & Triplet Miningを勉強して本記事にまとめた理由(モチベーション?)は、**テキスト情報 & カテゴリラベルを持ったアイテム**達に対して、その特徴や類似性を保持した埋め込みベクトルをいい感じ(?)に生成したいと思ったことです:)
+
+もし気になった点や理解が誤っている箇所がありましたら、ぜひコメントいただけると喜びます:)
+
 # そもそもTriplet Lossとは?
 
 ## Triplet Lossの始まり
@@ -145,6 +149,11 @@ $i$と$j$が同じラベルを持ち、$i$と$k$が異なるラベルであれ�
 なお上述した論文によると、batch hard storategyが最も良い性能を発揮するとの事です。ただこの結論は**データセットに依存**するものであり、開発におけるTriplet Miningの戦略は、**実際のデータセットを用いてパフォーマンスを比較することによって決定されるべき**ものであるとも述べています。
 
 # Online Triplet Mining をPytorchで実装してみた
+
+それでは、tensorflowによるtriplet miningの実装を参考にしつつ、pytorchで実装し直してみます。
+ソースコードは以下のリンクにおいてあります。
+
+https://github.com/morinota/ConvMF/tree/main/src/triplet_mining
 
 ## 埋め込みベクトル間の距離を効率的に算出する
 
@@ -514,9 +523,28 @@ class BatchHardStrategy:
 
 ## テストコード
 
+上述した各処理にテストコードを追加しました。
+以下のリンクから参照できます。
+https://github.com/morinota/ConvMF/tree/main/test/triplet_mining
+
+なお、テストデータはTriplet Loss and Online Triplet Mining in TensorFlowの実装をそのまま取ってきています。
+以下のコマンドで実行できます。
+
+```
+pytest テストコードのファイルパス
+```
+
+きちんとテストコードも書いているなんて、我ながら素敵だな－と思います:)
+これで安心してリファクタリングできるぞ...!
+
 # おわりに
 
-本記事では、pytorchでonline triplet miningの2つの戦略をpytorchで実装してみました。
+本記事では、pytorchでonline triplet miningの2つの戦略batch all & batch hard storategyをpytorchで実装してみました。
+自分で調べた際にtriplet miningに関する日本語記事やpytorchによる実装例がなかなか発見できなかったので、私と同様にtriplet lossを活用したいと考える方の情報収集に少しでもプラスの影響を与えられたら幸いです:)
+
+このtriplet loss & triplet miningを活用して、**アイテムの特徴や類似性をより良い感じ(?)に表現する埋め込みベクトル**をつくっていくぞ...!!
+
+もし気になった点や理解が誤っている箇所がありましたら、ぜひコメントいただけると喜びます:)
 
 # 参考
 
