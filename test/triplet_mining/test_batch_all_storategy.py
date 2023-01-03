@@ -87,7 +87,7 @@ def test_batch_all_strategy_with_only_one_class() -> None:
     embeddings = Tensor(np.random.rand(num_data, feat_dim).astype(np.float32))
     labels = Tensor(np.random.randint(0, num_classes, size=(num_data)).astype(np.float32))
 
-    triplet_loss_expected, fraction_expected = calc_triplet_loss_with_batch_all_strategy_by_numpy(
+    triplet_loss_expected, _ = calc_triplet_loss_with_batch_all_strategy_by_numpy(
         num_data,
         embeddings.numpy(),
         labels.numpy(),
@@ -99,13 +99,12 @@ def test_batch_all_strategy_with_only_one_class() -> None:
         margin=margin,
         squared=is_squared,
     )
-    triplet_loss, fraction = batch_all_obj.calc_triplet_loss(
+    triplet_loss = batch_all_obj.calc_triplet_loss(
         labels,
         embeddings,
     )
 
     assert np.allclose(triplet_loss.item(), triplet_loss_expected)
-    assert np.allclose(fraction.item(), fraction_expected)
 
 
 def test_batch_all_strategy_with_some_classes() -> None:

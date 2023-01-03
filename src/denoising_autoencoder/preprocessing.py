@@ -38,7 +38,7 @@ def read_parquet_articles(parquet_path: str) -> pd.DataFrame:
     return articles_df
 
 
-def get_valid_story_label(article_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[int, str]]:
+def get_valid_story_label(article_df: pd.DataFrame) -> Tuple[pd.Series, Dict[int, str]]:
     """get valid story(テキストのより細かい分類ラベル)を作る"""
     story_value_counts = article_df[STORY_COL].value_counts()
     story_indices = article_df[STORY_COL].isin(
@@ -49,10 +49,10 @@ def get_valid_story_label(article_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[
 
     article_df["label_story"], label_list = pd.factorize(article_df[STORY_COL])  # カテゴリをintにencode
     label_idx_mapping = {idx: label for idx, label in enumerate(label_list)}
-    return article_df, label_idx_mapping
+    return article_df["label_story"], label_idx_mapping
 
 
-def get_valid_category_label(article_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[int, str]]:
+def get_valid_category_label(article_df: pd.DataFrame) -> Tuple[pd.Series, Dict[int, str]]:
     """get valid category(テキストのよりラフな分類ラベル)"""
     category_value_counts = article_df[CATEGORY_COL].value_counts()
     category_indices = article_df[CATEGORY_COL].isin(
@@ -64,4 +64,4 @@ def get_valid_category_label(article_df: pd.DataFrame) -> Tuple[pd.DataFrame, Di
     article_df["label_category"], label_list = pd.factorize(article_df[CATEGORY_COL])  # カテゴリをintにencode
     label_idx_mapping = {idx: label for idx, label in enumerate(label_list)}
 
-    return article_df, label_idx_mapping
+    return article_df["label_category"], label_idx_mapping

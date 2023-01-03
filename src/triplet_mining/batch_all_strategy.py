@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 import torch
@@ -26,11 +26,28 @@ class BatchAllStrategy:
         self.squared = squared
         self.triplet_validetor = TripletValidetor()
 
+    def mining(
+        self,
+        labels: Tensor,
+        embeddings: Tensor,
+    ) -> Dict[str, Tensor]:
+        """損失の計算は行わず、miningしたtripletのDict[str, Tensor(embeddingのindex)]を返す"""
+        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
+
+        valid_triplet_mask = self.triplet_validetor.get_valid_mask(labels)
+
+        anchor_ids, positive_ids, negative_ids = torch.nonzero(valid_triplet_mask).unbind(dim=1)  # Trueの座標を取り出す
+        return {
+            "anchor_ids": anchor_ids,
+            "positive_ids": positive_ids,
+            "negative_ids": negative_ids,
+        }
+
     def calc_triplet_loss(
         self,
         labels: Tensor,
         embeddings: Tensor,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tensor:
         """Build the triplet loss over a batch of embeddings.
         We generate all the valid triplets and average the loss over the positive ones.
 
@@ -66,7 +83,7 @@ class BatchAllStrategy:
         # Get final mean triplet loss over the positive valid triplets
         triplet_loss_mean = torch.sum(triplet_loss) / (num_positive_triplets + 1e-16)
 
-        return triplet_loss_mean, fraction_positive_triplets
+        return triplet_loss_mean
 
     def _initialize_triplet_loss(self, pairwise_distance_matrix: Tensor) -> Tensor:
         """triplet_loss(batch_size*batch_size*batch_sizeの形のTensor)の初期値を作る.
@@ -107,3 +124,27 @@ class BatchAllStrategy:
         valid_triplets = torch.gt(input=triplet_loss, other=1e-16)
         valid_triplets = valid_triplets.float()  # positive triplet->1.0, negative triplet->0.0
         return torch.sum(valid_triplets)
+
+
+if __name__ == "__main__":
+    num_data = 5
+    feat_dim = 6
+    margin = 0.2
+    num_classes = 5
+    is_squared = False
+
+    embeddings = Tensor(np.random.rand(num_data, feat_dim).astype(np.float32))
+    labels = Tensor(np.random.randint(0, num_classes, size=(num_data)).astype(np.float32))
+
+    print(embeddings)
+    print(labels)
+
+    batch_all_obj = BatchAllStrategy(
+        margin=margin,
+        squared=is_squared,
+    )
+    triplet_embeddings_dict = batch_all_obj.mining(
+        labels,
+        embeddings,
+    )
+    print(triplet_embeddings_dict)

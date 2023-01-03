@@ -1,10 +1,11 @@
-from typing import Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 import torch
-from pairwise_distances import calc_pairwise_distances
 from torch import Tensor
-from valid_triplet import TripletValidetor
+
+from src.triplet_mining.pairwise_distances import calc_pairwise_distances
+from src.triplet_mining.valid_triplet import TripletValidetor
 
 
 class BatchHardStrategy:
@@ -50,6 +51,14 @@ class BatchHardStrategy:
         triplet_loss_mean = torch.mean(triplet_loss)
         return triplet_loss_mean
 
+    def mining(
+        self,
+        labels: Tensor,
+        embeddings: Tensor,
+    ) -> Dict[str, Tensor]:
+        """損失の計算は行わず、miningしたtripletのDict[str, Tensor]を返す"""
+        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
+
     def _extract_hardest_positives(
         self,
         pairwise_distance_matrix: Tensor,
@@ -64,7 +73,7 @@ class BatchHardStrategy:
         is_anchor_positive_matrix = self.triplet_validetor.get_anchor_positive_mask(
             labels,
         )
-        is_anchor_positive_matrix_binary = is_anchor_positive_matrix.float()
+        is_anchor_positive_matrix_binary = is_anchor_positive_matrix.float()  # boolを0 or 1に
 
         pairwise_dist_matrix_masked = torch.mul(
             pairwise_distance_matrix,

@@ -1,7 +1,14 @@
+from cProfile import label
+from operator import mod
+from statistics import mode
 from typing import Tuple
 
 import torch
 from torch import Tensor, nn
+from torch.utils.data import DataLoader
+
+from src.denoising_autoencoder.loss_function import DenoisingAutoEncoderLoss
+from src.triplet_mining.batch_hard_strategy import BatchHardStrategy
 
 
 def add_noise(
@@ -34,7 +41,52 @@ class AutoEncoder(nn.Module):
         self.decoder = nn.Linear(embedding_dim, input_dim)
 
     def forward(self, X: Tensor) -> Tuple[Tensor, Tensor]:
-        """出力はembeddeed(encodeされた後のTensor)、decodeされた後のTensorのtuple"""
+        """モデルを通して入力値を出力値に再構成して返す.
+        返り値はembeddeed(encodeされた後のTensor)、decodeされた後のTensorのtuple"""
         X_embedded = self.encoder(X)
         X_output = self.decoder(X_embedded)
         return X_embedded, X_output
+
+
+def train(
+    model: AutoEncoder,
+    train_dataloader: DataLoader,
+    loss_function: DenoisingAutoEncoderLoss,
+    optimizer: torch.optim.Adam,
+    device: torch.device,
+    epochs: int = 20,
+) -> AutoEncoder:
+    """Train the AutoEncoder model. 学習を終えたAutoEncoderオブジェクトを返す。"""
+
+    model.to(device)
+
+    for epoch_idx in range(epochs):
+        model.train()
+
+        for batch_idx, batch_dataset in enumerate(train_dataloader):
+            print(f"=====epoch_idx:{epoch_idx}, batch_idx:{batch_idx}=====")
+            input_vectors: Tensor
+            labels: Tensor
+            input_vectors, labels = tuple(tensors for tensors in batch_dataset)
+            labels = labels.type(dtype=torch.LongTensor)
+            input_vectors, labels = input_vectors.to(device), labels.to(device)
+
+            input_vectors_noised = add_noise(input_vectors).to(device)
+
+            # 勾配が累積してく仕組みなので,1バッチ毎に勾配の値を初期化しておく.
+            model.zero_grad()
+
+            # embedded_vectors, output_vecotrs = model.forward(input_vectors_noised)
+            embedded_vectors, output_vecotrs = model(input_vectors_noised)
+
+            loss = loss_function.forward(
+                inputs=input_vectors,
+                embeddings=embedded_vectors,
+                outputs=output_vecotrs,
+                labels=labels,
+            )
+            print(f"the loss: {loss}")
+            loss.backward()
+            optimizer.step()
+
+    return model

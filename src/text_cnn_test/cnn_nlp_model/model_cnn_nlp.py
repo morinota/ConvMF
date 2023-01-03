@@ -62,9 +62,7 @@ class CNN_NLP(nn.Module):
         # 学習済みの単語埋め込みベクトルの配列が渡されていれば...
         if pretrained_embedding is not None:
             self.vocab_size, self.embed_dim = pretrained_embedding.shape
-            self.embedding = nn.Embedding.from_pretrained(
-                pretrained_embedding, freeze=freeze_embedding
-            )
+            self.embedding = nn.Embedding.from_pretrained(pretrained_embedding, freeze=freeze_embedding)
         # 渡されていなければ...
         else:
             self.embed_dim = embed_dim
@@ -124,24 +122,18 @@ class CNN_NLP(nn.Module):
 
         # Apply CNN and ReLU.
         # Output shape: (batch_size, num_filters[i], L_out(convolutionの出力数))
-        x_conv_list: List[Tensor] = [
-            F.relu(conv1d(x_reshaped)) for conv1d in self.conv1d_list
-        ]
+        x_conv_list: List[Tensor] = [F.relu(conv1d(x_reshaped)) for conv1d in self.conv1d_list]
 
         # Max pooling.
         # 各convolutionの出力値にmax poolingを適用して、一つの代表値に。
         # Output shape: (batch_size, num_filters[i], 1)
         # kernel_size引数はx_convの次元数に！=>poolingの出力は1次元!
-        x_pool_list: List[Tensor] = [
-            F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list
-        ]
+        x_pool_list: List[Tensor] = [F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x_conv_list]
 
         # Concatenate x_pool_list to feed the fully connected layer(全結合層).
         # x_pool_listを連結して、fully connected layerに投入する為のshapeに返還
         # Output shape: (batch_size, sum(num_filters))
-        x_fc: Tensor = torch.cat(
-            [x_pool.squeeze(dim=2) for x_pool in x_pool_list], dim=1
-        )
+        x_fc: Tensor = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list], dim=1)
 
         # Compute logits. Output shape: (batch_size, dim_output)
         logits = self.fc(self.dropout(x_fc))

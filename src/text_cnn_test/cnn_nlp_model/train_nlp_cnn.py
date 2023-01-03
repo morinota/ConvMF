@@ -82,7 +82,7 @@ def train(
             # inputデータとoutputデータを分割
             batch_input_ids, batch_outputs = tuple(tensors for tensors in batch_dataset)
 
-            # ラベル側をキャストする(そのままだと何故かエラーが出るから)
+            # ラベル側をキャストする
             # batch_outputs: Tensor = batch_outputs.type(torch.LongTensor)
             # データをGPUにわたす。
             batch_input_ids: Tensor = batch_input_ids.to(device)
