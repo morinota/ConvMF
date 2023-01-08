@@ -97,17 +97,26 @@ def main():
     valid_embeddings, _ = autencoder_trained.forward(Tensor(np.array(valid_text_count_vectors)))
 
     evaluator_obj = CategorySimilarityEvaluator()
-    auroc_result = evaluator_obj.eval_embeddings(
-        embeddings=valid_embeddings,
-        labels=Tensor(np.array(valid_labels)),
-        n=5000,
+    auroc_result_DAE = evaluator_obj.eval_embeddings(
+        embeddings=Tensor(text_count_vectors.toarray()),
+        labels=Tensor(np.array(category_labels.values)),
+        n=10000,
+    )
+    auroc_result_tfidf = evaluator_obj.eval_embeddings(
+        embeddings=Tensor(text_tfidf_vectors.toarray()),
+        labels=Tensor(np.array(category_labels.values)),
+        n=10000,
     )
 
     fig, ax = plt.subplots()
-    ax = auroc_result.visualize_roc(
+    ax = auroc_result_DAE.visualize_roc(
         ax,
-        legend_name="DAE with triplet loss",
+        legend_name="embeddings by DAE with triplet loss",
         title_name="ROC of category similarity",
+    )
+    ax = auroc_result_tfidf.visualize_roc(
+        ax,
+        legend_name="tf-idf vectors",
     )
     fig.savefig(r"src\denoising_autoencoder\embeddings_with_category_similarity.png")
 
