@@ -32,7 +32,6 @@ class BatchAllStrategy:
         embeddings: Tensor,
     ) -> Dict[str, Tensor]:
         """損失の計算は行わず、miningしたtripletのDict[str, Tensor(embeddingのindex)]を返す"""
-        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
 
         valid_triplet_mask = self.triplet_validetor.get_valid_mask(labels)
 
