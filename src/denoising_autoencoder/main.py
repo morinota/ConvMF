@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.model_selection import train_test_split
 
 from src.config import MyConfig
 from src.denoising_autoencoder.count_vector import get_count_vectors, get_tfidf_vectors
@@ -45,31 +46,54 @@ def main():
     print(f"[LOG]text_tfidf_vectors.shape:{text_tfidf_vectors.shape}")
     print(text_tfidf_vectors.nnz)  # number of stored values
 
+    # The dataset is splitted into two: 5000 for training and 5348 for testing.
+    train_text_count_vectors, valid_text_count_vectors, train_labels, valid_labels = train_test_split(
+        text_count_vectors.toarray(),
+        np.array(category_labels.values),
+        train_size=5000,
+        random_state=42,
+        stratify=np.array(category_labels.values),
+    )
+
     # dataloaderを作る
     train_dataloader_category = create_dataloader(
-        inputs=text_count_vectors.toarray(),
-        outputs=np.array(category_labels.values),
+        inputs=np.array(train_text_count_vectors),
+        outputs=np.array(train_labels),
+        batch_size=32,
+    )
+    valid_dataloader_category = create_dataloader(
+        inputs=np.array(valid_text_count_vectors),
+        outputs=np.array(valid_labels),
         batch_size=32,
     )
 
     autoencoder = AutoEncoder(input_dim=input_dim, embedding_dim=50)
     optimizer = torch.optim.Adadelta(
         params=autoencoder.parameters(),  # 最適化対象
-        lr=0.00001,  # parameter更新の学習率
-        rho=0.95,  # 移動指数平均の係数(? きっとハイパーパラメータ)
+        lr=0.001,  # parameter更新の学習率
+        rho=0.95,  # 移動指数平均の係数(ハイパーパラメータ)
     )
-    loss_function = DenoisingAutoEncoderLoss()
+    loss_function = DenoisingAutoEncoderLoss(mining_storategy="batch_hard")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # denoizing autoencoder による学習
-    autencoder_trained = train(
+    autencoder_trained, valid_loss_list = train(
         model=autoencoder,
         train_dataloader=train_dataloader_category,
         loss_function=loss_function,
         optimizer=optimizer,
         device=device,
-        epochs=1,
+        epochs=2,
+        # valid_dataloader=valid_dataloader_category,
     )
+    torch.save(
+        obj=autencoder_trained.state_dict(),
+        f=r"src\denoising_autoencoder\autoencoder.pt",
+    )
+
+    # evaluate by AUROC of cosine similarity
+    # TODO:ある任意の２つのテキストのcosine similarityをembeddingから算出.
+    # 同一ラベルを正解値、異なるラベルを不正解値として、閾値を変更しながらROCを描く.
 
 
 if __name__ == "__main__":
