@@ -36,11 +36,15 @@ class BatchHardStrategy:
         """
         pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
 
-        hardest_positive_dists = self._extract_hardest_positives(pairwise_distance_matrix, labels)
+        hardest_positive_idxs = self._extract_hardest_positives(pairwise_distance_matrix, labels)
 
-        hardest_negative_dists = self._extract_hardest_negatives(pairwise_distance_matrix, labels)
+        hardest_negative_idxs = self._extract_hardest_negatives(pairwise_distance_matrix, labels)
 
-        init_triplet_loss = hardest_positive_dists - hardest_negative_dists + self.margin
+        init_triplet_loss = (
+            pairwise_distance_matrix[hardest_positive_idxs]
+            - pairwise_distance_matrix[hardest_negative_idxs]
+            + self.margin
+        )
 
         triplet_loss = torch.max(
             input=init_triplet_loss,
@@ -51,24 +55,17 @@ class BatchHardStrategy:
         triplet_loss_mean = torch.mean(triplet_loss)
         return triplet_loss_mean
 
-    def mining(
-        self,
-        labels: Tensor,
-        embeddings: Tensor,
-    ) -> Dict[str, Tensor]:
-        """損失の計算は行わず、miningしたtripletのDict[str, Tensor]を返す"""
-        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
-
     def _extract_hardest_positives(
         self,
         pairwise_distance_matrix: Tensor,
         labels: Tensor,
     ) -> Tensor:
-        """各anchorに対して、hardest positiveを見つける.
+        """各anchorに対して、hardest positiveを見つける
         For each anchor, get the hardest positive.
         1. 有効なペア(anchor,positive)の2次元マスクを取得する
-        2. 修正(有効なペアのみ考慮)された、距離行列の各行に対する最大距離を取る
-        返り値は、Tensor with shape (batch_size, 1)
+        2. 有効なペアのみ考慮された、距離行列の各行に対する最大距離を取る
+        返り値は、各行(anchor)に対するhardest positiveのindex
+            Tensor with shape (batch_size, 1)
         """
         is_anchor_positive_matrix = self.triplet_validetor.get_anchor_positive_mask(
             labels,
@@ -80,12 +77,7 @@ class BatchHardStrategy:
             is_anchor_positive_matrix_binary,
         )  # アダマール積(要素毎の積)
 
-        hardest_positive_dists, _ = pairwise_dist_matrix_masked.max(
-            dim=1,  # dim番目の軸に沿って最大値を取得
-            keepdim=True,  # 2次元Tensorを保つ
-        )  # ->Tensor with shape (batch_size, 1)
-
-        return hardest_positive_dists
+        return pairwise_dist_matrix_masked.argmax(dim=1)
 
     def _extract_hardest_negatives(
         self,
@@ -97,7 +89,8 @@ class BatchHardStrategy:
         1. 有効なペア(anchor, negative)の2次元マスクを取得する.
         2. 無効なペアを考慮から取り除く為に、無効なペアのdistanceに各行の最大値を足す.
         3. 距離行列の各行に対する最小距離を取る
-        返り値は、Tensor with shape (batch_size, 1)
+        返り値は、各行(anchor)に対するhardest negativeのindex
+            Tensor with shape (batch_size, 1)
         """
         is_anchor_negative_matrix = self.triplet_validetor.get_anchor_negative_mask(
             labels,
@@ -112,6 +105,50 @@ class BatchHardStrategy:
             max_dist_each_rows * (1.0 - is_anchor_negative_matrix_binary)
         )  # is_anchor_negative=Falseの要素にmax_distを足す
 
-        hardest_negative_dists, _ = pairwise_dist_matrix_masked.min(dim=1, keepdim=True)
+        # hardest_negative_dists, _ = pairwise_dist_matrix_masked.min(dim=1, keepdim=True)
 
-        return hardest_negative_dists
+        return pairwise_dist_matrix_masked.argmin(dim=1)
+
+    def mining(
+        self,
+        labels: Tensor,
+        embeddings: Tensor,
+    ) -> Dict[str, Tensor]:
+        """損失の計算は行わず、miningしたtripletのDict[str, Tensor(embeddingのindex)]を返す"""
+        pairwise_distance_matrix = calc_pairwise_distances(embeddings, is_squared=self.squared)
+
+        anchor_idxs = torch.arange(len(labels))  # build-inのarange()みたいな
+
+        hardest_positive_idxs = self._extract_hardest_positives(pairwise_distance_matrix, labels)
+
+        hardest_negative_idxs = self._extract_hardest_negatives(pairwise_distance_matrix, labels)
+
+        return {
+            "anchor_ids": anchor_idxs,
+            "positive_ids": hardest_positive_idxs,
+            "negative_ids": hardest_negative_idxs,
+        }
+
+
+if __name__ == "__main__":
+    num_data = 5
+    feat_dim = 6
+    margin = 0.2
+    num_classes = 5
+    is_squared = False
+
+    embeddings = Tensor(np.random.rand(num_data, feat_dim).astype(np.float32))
+    labels = Tensor(np.random.randint(0, num_classes, size=(num_data)).astype(np.float32))
+
+    print(embeddings)
+    print(labels)
+
+    batch_hard_obj = BatchHardStrategy(
+        margin=margin,
+        squared=is_squared,
+    )
+    triplet_embeddings_dict = batch_hard_obj.mining(
+        labels,
+        embeddings,
+    )
+    print(triplet_embeddings_dict)
