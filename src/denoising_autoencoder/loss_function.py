@@ -1,3 +1,5 @@
+from ast import Raise
+from distutils.log import error
 from turtle import forward
 from typing import Dict
 
@@ -15,7 +17,7 @@ class DenoisingAutoEncoderLoss(nn.Module):
 
     def __init__(
         self,
-        alpha: float = 0.00001,
+        alpha: float = 10.0,
         margin: float = 1.0,
         mining_storategy: str = "batch_all",
     ) -> None:
@@ -23,11 +25,19 @@ class DenoisingAutoEncoderLoss(nn.Module):
         self.alpha = alpha
         self.margin = margin
 
-        self.mse_loss_func = nn.MSELoss(reduction="mean")
-        self.triplet_mining_obj = BatchAllStrategy(self.margin)
+        self.mse_loss_func = nn.MSELoss(reduction="sum")
+
+        if mining_storategy not in self.MINING_STORATEGIES:
+            raise ValueError(
+                "Unexpected storategy name is inputted. Please choose mining_storategy in [batch_all, batch_hard]"
+            )
+        self.triplet_mining_obj = (
+            BatchAllStrategy(self.margin) if mining_storategy == "batch_all" else BatchHardStrategy(self.margin)
+        )
+
         self.triplet_loss_func = nn.TripletMarginLoss(
             margin=self.margin,
-            reduction="mean",
+            reduction="sum",
         )
 
     def forward(
@@ -37,16 +47,29 @@ class DenoisingAutoEncoderLoss(nn.Module):
         outputs: Tensor,
         labels: Tensor,
     ) -> Tensor:
+        # TODO: 元論文の実装に改造する. カッコを展開したらreduction="sum"を使って実装できそう.
         triplet_indices_dict = self.triplet_mining_obj.mining(labels, embeddings)
 
-        first_term_loss: Tensor = self.mse_loss_func(inputs, outputs)
-        # triplet_embeddings = self._extract_triplet_embeddings(embeddings, is_triplet_tensor)
+        squared_error_term = 0
+        squared_error_term += self.mse_loss_func(
+            inputs[triplet_indices_dict["anchor_ids"]],
+            outputs[triplet_indices_dict["anchor_ids"]],
+        )
+        squared_error_term += self.mse_loss_func(
+            inputs[triplet_indices_dict["positive_ids"]],
+            outputs[triplet_indices_dict["positive_ids"]],
+        )
+        squared_error_term += self.mse_loss_func(
+            inputs[triplet_indices_dict["negative_ids"]],
+            outputs[triplet_indices_dict["negative_ids"]],
+        )
+
         triplet_loss = self.triplet_loss_func.forward(
             anchor=embeddings[triplet_indices_dict["anchor_ids"]],
             positive=embeddings[triplet_indices_dict["positive_ids"]],
             negative=embeddings[triplet_indices_dict["negative_ids"]],
         )
-
-        loss = first_term_loss + self.alpha * triplet_loss
+        print(f"squared_error:{squared_error_term}, triplet_loss:{triplet_loss}")
+        loss = squared_error_term + self.alpha * triplet_loss
         loss = loss.to(torch.float32)
         return loss
