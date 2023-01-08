@@ -1,10 +1,12 @@
 from typing import Dict, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import train_test_split
+from torch import Tensor
 
 from src.config import MyConfig
 from src.denoising_autoencoder.count_vector import get_count_vectors, get_tfidf_vectors
@@ -16,6 +18,7 @@ from src.denoising_autoencoder.preprocessing import (
     get_valid_story_label,
     read_parquet_articles,
 )
+from src.denoising_autoencoder.vec_similarity import CategorySimilarityEvaluator
 from src.text_cnn_test.utils.dataloader import create_dataloader
 
 
@@ -50,12 +53,11 @@ def main():
     train_text_count_vectors, valid_text_count_vectors, train_labels, valid_labels = train_test_split(
         text_count_vectors.toarray(),
         np.array(category_labels.values),
-        train_size=5000,
+        train_size=5000,  # 5000 for training
         random_state=42,
         stratify=np.array(category_labels.values),
     )
 
-    # dataloaderを作る
     train_dataloader_category = create_dataloader(
         inputs=np.array(train_text_count_vectors),
         outputs=np.array(train_labels),
@@ -83,17 +85,31 @@ def main():
         loss_function=loss_function,
         optimizer=optimizer,
         device=device,
-        epochs=2,
-        # valid_dataloader=valid_dataloader_category,
+        epochs=5,
+        valid_dataloader=valid_dataloader_category,
     )
+    print(valid_loss_list)
     torch.save(
         obj=autencoder_trained.state_dict(),
         f=r"src\denoising_autoencoder\autoencoder.pt",
     )
 
-    # evaluate by AUROC of cosine similarity
-    # TODO:ある任意の２つのテキストのcosine similarityをembeddingから算出.
-    # 同一ラベルを正解値、異なるラベルを不正解値として、閾値を変更しながらROCを描く.
+    valid_embeddings, _ = autencoder_trained.forward(Tensor(np.array(valid_text_count_vectors)))
+
+    evaluator_obj = CategorySimilarityEvaluator()
+    auroc_result = evaluator_obj.eval_embeddings(
+        embeddings=valid_embeddings,
+        labels=Tensor(np.array(valid_labels)),
+        n=5000,
+    )
+
+    fig, ax = plt.subplots()
+    ax = auroc_result.visualize_roc(
+        ax,
+        legend_name="DAE with triplet loss",
+        title_name="ROC of category similarity",
+    )
+    fig.savefig(r"src\denoising_autoencoder\embeddings_with_category_similarity.png")
 
 
 if __name__ == "__main__":

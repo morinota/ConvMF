@@ -1,6 +1,6 @@
 import dataclasses
 import random
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +14,26 @@ class AUROCResult:
     fpr: np.ndarray
     thresholds: np.ndarray
     auroc_score: float
+
+    def visualize_roc(
+        self,
+        plt_axes: plt.Axes,
+        legend_name: Optional[str] = None,
+        title_name: Optional[str] = None,
+    ) -> plt.Axes:
+        """ROC曲線を描画してAxesオブジェクトに追加する"""
+        plt_axes.plot(
+            self.fpr,
+            self.tpr,
+            label=f"{legend_name}(AUROC={self.auroc_score})",
+        )
+        plt_axes.set_xlabel("false_positive_rate")
+        plt_axes.set_ylabel("true_positive_rate")
+        plt_axes.legend()
+        if title_name is None:
+            return plt_axes
+        plt_axes.set_title(title_name)
+        return plt_axes
 
 
 def get_random_pair_indices(
@@ -45,7 +65,11 @@ def get_auroc_score(tpr: List[float], fpr: List[float]) -> float:
 
 
 class CategorySimilarityEvaluator(object):
-    """「埋め込みベクトルがカテゴリ間の類似性を保持しているか」を評価する為の全ての処理を管理するクラス"""
+    """「埋め込みベクトルがカテゴリ間の類似性を保持しているか」を評価する為の全ての処理を管理するクラス
+    - # evaluate by AUROC of cosine similarity
+    - # TODO:ある任意の２つのテキストのcosine similarityをembeddingから算出.
+    - # 同一ラベルを正解値、異なるラベルを不正解値として、閾値を変更しながらROCを描く.
+    """
 
     def __init__(self) -> None:
         pass
