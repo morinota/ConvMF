@@ -7,6 +7,8 @@ import numpy as np
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch import Tensor
 
+random.seed(123)
+
 
 @dataclasses.dataclass
 class AUROCResult:
@@ -80,21 +82,23 @@ class CategorySimilarityEvaluator(object):
         labels: Tensor,
         n: int,
     ) -> AUROCResult:
+        num_samples = len(embeddings)
 
         pair_indices_list = get_random_pair_indices(
-            num_samples=len(embeddings),
+            num_samples=num_samples,
             num_pairs=n,
         )  # 任意のn対のレコードのペアを作る.
+        # TODO: ペアの作り方で、tf-idfで論文と同じスコアが出るか決まりそう.
 
-        cosine_similarities = (
+        cosine_similarities = [
             calc_cosine_similarity(
                 embeddings[pair_indices[0]].detach().numpy(),
                 embeddings[pair_indices[1]].detach().numpy(),
             )
             for pair_indices in pair_indices_list
-        )  # n対のペアに対して、embeddingを用いてそれぞれcosine similarityを算出する.
+        ]  # n対のペアに対して、embeddingを用いてそれぞれcosine similarityを算出する.
 
-        is_same_categories = (
+        is_same_categories = [
             int(
                 get_is_same_category(
                     int(labels[pair_indices[0]]),
@@ -102,11 +106,15 @@ class CategorySimilarityEvaluator(object):
                 )
             )
             for pair_indices in pair_indices_list
-        )  # n対のペアに対して、labelを用いてそれぞれbinary値(is_same_category)を作る
+        ]  # n対のペアに対して、labelを用いてそれぞれbinary値(is_same_category)を作る
+        sorted_list = sorted(
+            zip(cosine_similarities, is_same_categories), reverse=True
+        )  # cosine_similaritiesの上位10%のペアのみ抽出.
+        cosine_similarities, is_same_categories = zip(*sorted_list)
 
         fpr, tpr, thresholds = roc_curve(
-            y_true=list(is_same_categories),
-            y_score=list(cosine_similarities),
+            y_true=list(is_same_categories)[: n // 10],
+            y_score=list(cosine_similarities)[: n // 10],
         )  # FPR, TPR, thresholdsを算出する.
 
         auroc_score = get_auroc_score(list(tpr), list(fpr))  # aucを算出する.
@@ -119,7 +127,7 @@ if __name__ == "__main__":
     embedding_dim = 6
     num_classes = 3
 
-    num_pairs = 10
+    num_pairs = 10 * 9 // 2
 
     embeddings = Tensor(np.random.rand(num_data, embedding_dim).astype(np.float32))
     labels = Tensor(np.random.randint(0, num_classes, size=(num_data)).astype(np.float32))

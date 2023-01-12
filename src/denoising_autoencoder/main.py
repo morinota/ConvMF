@@ -36,7 +36,8 @@ def main():
         # 以下、CountVectorizerのオプション
         min_df=0.01,
         max_df=0.09,
-        max_features=1000,
+        # max_features=1000,
+        max_features=10000,
         binary=False,
     )
     input_dim = text_count_vectors.shape[1]
@@ -64,7 +65,7 @@ def main():
         batch_size=32,
     )
     valid_dataloader_category = create_dataloader(
-        inputs=np.array(valid_text_count_vectors),
+        inputs=np.array(valid_text_count_vectors),S
         outputs=np.array(valid_labels),
         batch_size=32,
     )
@@ -75,7 +76,11 @@ def main():
         lr=0.001,  # parameter更新の学習率
         rho=0.95,  # 移動指数平均の係数(ハイパーパラメータ)
     )
-    loss_function = DenoisingAutoEncoderLoss(mining_storategy="batch_hard")
+    loss_function = DenoisingAutoEncoderLoss(
+        alpha=10,
+        margin=10,
+        mining_storategy="batch_hard",
+    )
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # denoizing autoencoder による学習
@@ -85,14 +90,13 @@ def main():
         loss_function=loss_function,
         optimizer=optimizer,
         device=device,
-        epochs=5,
-        valid_dataloader=valid_dataloader_category,
+        epochs=100,
+        # valid_dataloader=valid_dataloader_category,
     )
-    print(valid_loss_list)
-    torch.save(
-        obj=autencoder_trained.state_dict(),
-        f=r"src\denoising_autoencoder\autoencoder.pt",
-    )
+    # torch.save(
+    #     obj=autencoder_trained.state_dict(),
+    #     f=r"src\denoising_autoencoder\autoencoder.pt",
+    # )
 
     valid_embeddings, _ = autencoder_trained.forward(Tensor(np.array(valid_text_count_vectors)))
 
