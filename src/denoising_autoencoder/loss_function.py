@@ -47,7 +47,7 @@ class DenoisingAutoEncoderLoss(nn.Module):
         outputs: Tensor,
         labels: Tensor,
     ) -> Tensor:
-        # TODO: 元論文の実装に改造する. カッコを展開したらreduction="sum"を使って実装できそう.
+
         triplet_indices_dict = self.triplet_mining_obj.mining(labels, embeddings)
 
         squared_error_term = 0
